@@ -38,7 +38,7 @@ actor PairingService {
         desktopCertFingerprintSha256: String
     ) async throws -> TrustRecord {
         guard let pinnedFingerprint = endpoint.pairingCertFingerprintSha256,
-              pinnedFingerprint.count == 64
+              Self.isValidSha256Hex(pinnedFingerprint)
         else {
             throw PairingError.untrustedEndpoint
         }
@@ -118,6 +118,15 @@ extension PairingError: LocalizedError {
             return "Pairing is temporarily locked due to repeated invalid attempts."
         case .serverRejected:
             return "Desktop receiver rejected pairing request."
+        }
+    }
+}
+
+private extension PairingService {
+    static func isValidSha256Hex(_ value: String) -> Bool {
+        guard value.count == 64 else { return false }
+        return value.allSatisfy { char in
+            char.isHexDigit
         }
     }
 }
