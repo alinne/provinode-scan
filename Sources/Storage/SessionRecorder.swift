@@ -65,10 +65,10 @@ actor SessionRecorder {
 
     func finalize(extraMetadata: [String: String] = [:]) throws -> URL {
         let metadata = [
-            "room.session_id": sessionId,
-            "room.schema_version": RoomContractVersions.roomCaptureSessionManifest,
-            "source_device_id": sourceDeviceId,
-            "capture_started_at_utc": ISO8601DateFormatter.fractional.string(from: startedAtUtc)
+            RoomMetadataKeys.roomSessionId: sessionId,
+            RoomMetadataKeys.roomSchemaVersion: RoomContractVersions.roomCaptureSessionManifest,
+            RoomMetadataKeys.sourceDeviceId: sourceDeviceId,
+            RoomMetadataKeys.captureStartedAtUtc: ISO8601DateFormatter.fractional.string(from: startedAtUtc)
         ].merging(extraMetadata, uniquingKeysWith: { _, new in new })
 
         let manifest = RoomCaptureSessionManifest(

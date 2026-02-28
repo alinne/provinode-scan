@@ -134,7 +134,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         let sampleSeq = await sequencer.next()
 
         var metadataWithSource = metadata ?? [:]
-        metadataWithSource["source_device_id"] = sourceDeviceId
+        metadataWithSource[RoomMetadataKeys.sourceDeviceId] = sourceDeviceId
 
         let envelope = CaptureSampleEnvelope(
             session_id: sessionId,
