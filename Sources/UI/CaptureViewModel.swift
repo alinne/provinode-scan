@@ -110,7 +110,7 @@ final class CaptureViewModel: ObservableObject {
                     scanIdentity: scanIdentity)
                 status = "Secure QUIC connected"
             } catch {
-                status = "QUIC connect failed: \(error.localizedDescription)"
+                status = "QUIC connect failed, retrying while recording locally: \(error.localizedDescription)"
             }
         } else {
             status = "No trusted desktop selected, recording locally only"

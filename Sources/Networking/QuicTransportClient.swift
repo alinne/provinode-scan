@@ -43,12 +43,18 @@ actor QuicTransportClient {
             sessionId: sessionId,
             scanIdentity: scanIdentity)
         connectionPlan = plan
+        activeSessionId = sessionId
 
         if bufferedSampleSessionId != sessionId {
             resetReplayBuffer(for: sessionId)
         }
 
-        try await establishConnection(plan: plan, isReconnect: false)
+        do {
+            try await establishConnection(plan: plan, isReconnect: false)
+        } catch {
+            await handleConnectionFailure(error)
+            throw error
+        }
     }
 
     func disconnect() {
@@ -517,7 +523,11 @@ actor QuicTransportClient {
         outboundCounter = 0
         inboundCounter = -1
         receiveBuffer = Data()
-        activeSessionId = ""
+        if clearPlan {
+            activeSessionId = ""
+        } else if let sessionId = connectionPlan?.sessionId {
+            activeSessionId = sessionId
+        }
 
         if clearPlan {
             connectionPlan = nil
