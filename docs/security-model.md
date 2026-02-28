@@ -4,8 +4,8 @@
 - Desktop pairing endpoint discovery uses mDNS advertisement with non-sensitive metadata only.
 - Pairing request uses HTTPS with desktop cert fingerprint pinning from mDNS metadata.
 - Pairing lockout is enforced by desktop after repeated invalid codes.
-- Scanner identity is persisted locally as a long-lived signing key; trust records store the derived scanner fingerprint.
-- Trust records are persisted locally with peer device ID + certificate fingerprint hash.
+- Scanner identity is persisted locally as a long-lived signing key.
+- Trust records are persisted locally with paired desktop device ID + desktop certificate fingerprint hash for live-stream pinning.
 - Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint verification in the client.
 - Secure-channel hello carries scanner device identity + fingerprint + scanner signing public key + signed hello proof.
 - Resume checkpoints and backpressure hints are exchanged on encrypted control payloads.
