@@ -119,6 +119,22 @@ final class CaptureViewModel: ObservableObject {
                 status = "QR payload pairing endpoint is invalid"
                 return
             }
+            guard pairingUrl.scheme?.lowercased() == "https" else {
+                status = "QR payload pairing endpoint must use https"
+                return
+            }
+            guard isSupportedWireVersion(payload.protocol_version) else {
+                status = "QR payload protocol version is unsupported"
+                return
+            }
+            guard !isExpired(payload.expires_at_utc) else {
+                status = "QR payload has expired. Start a new pairing session."
+                return
+            }
+            guard isValidSha256Hex(payload.desktop_cert_fingerprint_sha256) else {
+                status = "QR payload desktop certificate fingerprint is invalid"
+                return
+            }
 
             manualHost = pairingUrl.host ?? manualHost
             manualPort = String(pairingUrl.port ?? 7448)
@@ -354,5 +370,51 @@ final class CaptureViewModel: ObservableObject {
         }
 
         return (String(parts[0]), port)
+    }
+
+    private func isExpired(_ expiresAtUtc: String) -> Bool {
+        guard let expiresAt = parseIso8601Utc(expiresAtUtc) else {
+            return true
+        }
+
+        return expiresAt <= Date()
+    }
+
+    private func isSupportedWireVersion(_ version: String) -> Bool {
+        guard let major = version.split(separator: ".", maxSplits: 1).first,
+              major == "1"
+        else {
+            return false
+        }
+
+        return true
+    }
+
+    private func isValidSha256Hex(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count == 64 else {
+            return false
+        }
+
+        return trimmed.unicodeScalars.allSatisfy { scalar in
+            switch scalar.value {
+            case 48...57, 65...70, 97...102:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private func parseIso8601Utc(_ value: String) -> Date? {
+        let internet = ISO8601DateFormatter()
+        internet.formatOptions = [.withInternetDateTime]
+        if let parsed = internet.date(from: value) {
+            return parsed
+        }
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
     }
 }
