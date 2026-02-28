@@ -246,8 +246,8 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 }
 
 extension RoomCapturePipeline: ARSessionDelegate {
-    func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        Task { [weak self] in
+    nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        Task { @MainActor [weak self] in
             await self?.process(frame: frame)
         }
     }

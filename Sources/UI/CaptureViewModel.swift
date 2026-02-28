@@ -124,9 +124,8 @@ final class CaptureViewModel: ObservableObject {
         self.pipeline = capturePipeline
 
         await transport.setBackpressureHandler { [weak self] hint in
-            await MainActor.run {
-                self?.pipeline?.applyBackpressureHint(hint)
-            }
+            guard let self else { return }
+            await self.applyBackpressureHint(hint)
         }
 
         do {
@@ -260,5 +259,9 @@ final class CaptureViewModel: ObservableObject {
         }
 
         return trustedByFingerprint
+    }
+
+    private func applyBackpressureHint(_ hint: BackpressureHint) {
+        pipeline?.applyBackpressureHint(hint)
     }
 }

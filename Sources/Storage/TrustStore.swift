@@ -9,7 +9,7 @@ actor TrustStore {
         let root = try rootDirectory ?? Self.defaultRootDirectory()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         fileUrl = root.appendingPathComponent("trust-records.json", conformingTo: .json)
-        try load()
+        recordsByDeviceId = try Self.load(fileUrl: fileUrl)
     }
 
     func upsert(_ record: TrustRecord) throws {
@@ -25,13 +25,13 @@ actor TrustStore {
         recordsByDeviceId.values.sorted { $0.peer_device_id < $1.peer_device_id }
     }
 
-    private func load() throws {
+    private static func load(fileUrl: URL) throws -> [String: TrustRecord] {
         guard FileManager.default.fileExists(atPath: fileUrl.path) else {
-            return
+            return [:]
         }
 
         let data = try Data(contentsOf: fileUrl)
-        recordsByDeviceId = try JSONDecoder().decode([String: TrustRecord].self, from: data)
+        return try JSONDecoder().decode([String: TrustRecord].self, from: data)
     }
 
     private func persist() throws {

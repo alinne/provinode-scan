@@ -32,7 +32,7 @@ actor SessionRecorder {
         startedAtUtc = .now
         endedAtUtc = startedAtUtc
 
-        try prepareDirectories()
+        try Self.prepareDirectories(blobsRoot: blobsRoot, samplesLogUrl: samplesLogUrl)
     }
 
     func record(envelope: CaptureSampleEnvelope, payload: Data) throws {
@@ -109,7 +109,7 @@ actor SessionRecorder {
         return destination
     }
 
-    private func prepareDirectories() throws {
+    private static func prepareDirectories(blobsRoot: URL, samplesLogUrl: URL) throws {
         try FileManager.default.createDirectory(at: blobsRoot, withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: samplesLogUrl.path) {
             FileManager.default.createFile(atPath: samplesLogUrl.path, contents: nil)

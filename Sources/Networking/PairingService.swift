@@ -145,7 +145,8 @@ private final class PinnedTlsDelegate: NSObject, URLSessionDelegate {
     ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust,
-              let leaf = SecTrustGetCertificateAtIndex(serverTrust, 0)
+              let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate],
+              let leaf = chain.first
         else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
