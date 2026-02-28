@@ -1,0 +1,45 @@
+name: ProvinodeScan
+options:
+  minimumXcodeGenVersion: 2.38.0
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.provinode.scan
+    SWIFT_VERSION: 5.10
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
+packages:
+  ProvinodeRoomContracts:
+    path: ../provinode-room-contracts/swift/ProvinodeRoomContracts
+targets:
+  ProvinodeScan:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Config/Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: ProvinodeScan
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+    dependencies:
+      - package: ProvinodeRoomContracts
+  ProvinodeScanTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests/ProvinodeScanTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: ProvinodeScan
+      - package: ProvinodeRoomContracts
+schemes:
+  ProvinodeScan:
+    build:
+      targets:
+        ProvinodeScan: all
+    test:
+      targets:
+        - ProvinodeScanTests
