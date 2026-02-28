@@ -87,6 +87,7 @@ final class CaptureViewModel: ObservableObject {
         guard !isCapturing else { return }
 
         let sessionId = ULID.generate()
+        var activeTransport: QuicTransportClient?
         let recorder: SessionRecorder
         do {
             recorder = try SessionRecorder(
@@ -109,18 +110,21 @@ final class CaptureViewModel: ObservableObject {
                     sessionId: sessionId,
                     scanIdentity: scanIdentity)
                 status = "Secure QUIC connected"
+                activeTransport = transport
             } catch {
                 status = "QUIC connect failed, retrying while recording locally: \(error.localizedDescription)"
+                await transport.disconnect()
             }
         } else {
             status = "No trusted desktop selected, recording locally only"
+            await transport.disconnect()
         }
 
         let capturePipeline = RoomCapturePipeline(
             sessionId: sessionId,
             sourceDeviceId: scanIdentity.deviceId,
             recorder: recorder,
-            transport: resolvedStreamingEndpoint() == nil ? nil : transport)
+            transport: activeTransport)
         self.pipeline = capturePipeline
 
         await transport.setBackpressureHandler { [weak self] hint in
