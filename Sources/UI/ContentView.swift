@@ -28,6 +28,8 @@ struct ContentView: View {
                         .textInputAutocapitalization(.never)
                     TextField("Pairing port", text: $vm.manualPort)
                         .keyboardType(.numberPad)
+                    TextField("Manual pairing cert fingerprint (sha256)", text: $vm.manualPairingFingerprintSha256)
+                        .textInputAutocapitalization(.never)
 
                     TextField("Pairing code", text: $vm.pairingCode)
                         .keyboardType(.numberPad)

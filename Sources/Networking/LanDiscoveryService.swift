@@ -106,11 +106,17 @@ final class LanDiscoveryService: NSObject, ObservableObject {
         let displayName = txtValue("display_name", from: txtRecord) ?? sender.name
         let desktopDeviceId = txtValue("device_id", from: txtRecord) ?? sender.name
         let quicPort = Int(txtValue("quic_port", from: txtRecord) ?? "") ?? 7447
+        let pairingScheme = (txtValue("pairing_scheme", from: txtRecord) ?? "https").lowercased()
+        let pairingCertFingerprintSha256 = txtValue("pairing_cert_fingerprint_sha256", from: txtRecord)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
 
         resolvedEndpointsByKey[serviceKey] = PairingEndpoint(
             host: host,
             port: pairingPort,
             quicPort: quicPort,
+            pairingScheme: pairingScheme,
+            pairingCertFingerprintSha256: pairingCertFingerprintSha256,
             displayName: displayName,
             desktopDeviceId: desktopDeviceId)
         refreshPublishedEndpoints()

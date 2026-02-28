@@ -8,6 +8,7 @@ final class CaptureViewModel: ObservableObject {
     @Published var selectedEndpoint: PairingEndpoint?
     @Published var manualHost: String = ""
     @Published var manualPort: String = "7448"
+    @Published var manualPairingFingerprintSha256: String = ""
     @Published var pairingCode: String = ""
     @Published var pairingNonce: String = ""
     @Published var status: String = "Idle"
@@ -73,7 +74,7 @@ final class CaptureViewModel: ObservableObject {
                 scanDeviceId: deviceId,
                 scanDisplayName: UIDevice.current.name,
                 scanCertFingerprintSha256: Sha256.hex(of: deviceId),
-                desktopCertFingerprintSha256: Sha256.hex(of: endpoint.desktopDeviceId))
+                desktopCertFingerprintSha256: endpoint.pairingCertFingerprintSha256 ?? "")
             status = "Paired with \(trust.peer_display_name)"
         } catch {
             status = "Pairing failed: \(error.localizedDescription)"
@@ -198,10 +199,15 @@ final class CaptureViewModel: ObservableObject {
         }
 
         let port = Int(manualPort) ?? 7448
+        let fingerprint = manualPairingFingerprintSha256
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
             port: port,
             quicPort: 7447,
+            pairingScheme: "https",
+            pairingCertFingerprintSha256: fingerprint.isEmpty ? nil : fingerprint,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
     }
@@ -212,6 +218,8 @@ final class CaptureViewModel: ObservableObject {
                 host: selectedEndpoint.host,
                 port: selectedEndpoint.quicPort,
                 quicPort: selectedEndpoint.quicPort,
+                pairingScheme: selectedEndpoint.pairingScheme,
+                pairingCertFingerprintSha256: selectedEndpoint.pairingCertFingerprintSha256,
                 displayName: selectedEndpoint.displayName,
                 desktopDeviceId: selectedEndpoint.desktopDeviceId)
         }
@@ -220,10 +228,15 @@ final class CaptureViewModel: ObservableObject {
             return nil
         }
 
+        let manualFingerprint = manualPairingFingerprintSha256
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
             port: 7447,
             quicPort: 7447,
+            pairingScheme: "https",
+            pairingCertFingerprintSha256: manualFingerprint.isEmpty ? nil : manualFingerprint,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
     }

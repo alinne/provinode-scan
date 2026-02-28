@@ -39,7 +39,7 @@ Recorded sessions are stored in app support with this layout:
 
 ## LAN discovery
 - Bonjour service browse type: `_provinode-room._tcp`
-- Discovery metadata is limited to endpoint identity and ports.
-- Manual host entry remains available as fallback.
+- Discovery metadata includes endpoint identity, ports, and pairing TLS cert fingerprint.
+- Manual host entry remains available with explicit pairing TLS fingerprint input.
 
 See `docs` in the desktop repo for Vault mapping and reconstruction linkage.

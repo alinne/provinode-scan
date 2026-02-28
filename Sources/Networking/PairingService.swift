@@ -1,15 +1,20 @@
+import CryptoKit
 import Foundation
 import ProvinodeRoomContracts
+import Security
 
 struct PairingEndpoint: Codable, Hashable {
     let host: String
     let port: Int
     let quicPort: Int
+    let pairingScheme: String
+    let pairingCertFingerprintSha256: String?
     let displayName: String
     let desktopDeviceId: String
 }
 
 enum PairingError: Error {
+    case untrustedEndpoint
     case invalidCode
     case expired
     case lockedOut
@@ -18,11 +23,9 @@ enum PairingError: Error {
 
 actor PairingService {
     private let trustStore: TrustStore
-    private let session: URLSession
 
-    init(trustStore: TrustStore, session: URLSession = .shared) {
+    init(trustStore: TrustStore) {
         self.trustStore = trustStore
-        self.session = session
     }
 
     func confirmPairing(
@@ -34,6 +37,12 @@ actor PairingService {
         scanCertFingerprintSha256: String,
         desktopCertFingerprintSha256: String
     ) async throws -> TrustRecord {
+        guard let pinnedFingerprint = endpoint.pairingCertFingerprintSha256,
+              pinnedFingerprint.count == 64
+        else {
+            throw PairingError.untrustedEndpoint
+        }
+
         let confirmPayload = PairingConfirmPayload(
             pairing_nonce: pairingNonce,
             scan_device_id: scanDeviceId,
@@ -51,7 +60,7 @@ actor PairingService {
         if baseHost.hasPrefix("http://") || baseHost.hasPrefix("https://") {
             hostWithScheme = baseHost
         } else {
-            hostWithScheme = "http://\(baseHost)"
+            hostWithScheme = "\(endpoint.pairingScheme)://\(baseHost)"
         }
 
         guard var components = URLComponents(string: hostWithScheme) else {
@@ -68,6 +77,11 @@ actor PairingService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = requestBody
+
+        let session = URLSession(
+            configuration: .ephemeral,
+            delegate: PinnedTlsDelegate(expectedFingerprintSha256: pinnedFingerprint),
+            delegateQueue: nil)
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -88,6 +102,54 @@ actor PairingService {
         default:
             throw PairingError.serverRejected
         }
+    }
+}
+
+extension PairingError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .untrustedEndpoint:
+            return "Receiver endpoint is missing a trusted pairing certificate fingerprint."
+        case .invalidCode:
+            return "Pairing code or nonce is invalid."
+        case .expired:
+            return "Pairing session has expired."
+        case .lockedOut:
+            return "Pairing is temporarily locked due to repeated invalid attempts."
+        case .serverRejected:
+            return "Desktop receiver rejected pairing request."
+        }
+    }
+}
+
+private final class PinnedTlsDelegate: NSObject, URLSessionDelegate {
+    private let expectedFingerprintSha256: String
+
+    init(expectedFingerprintSha256: String) {
+        self.expectedFingerprintSha256 = expectedFingerprintSha256
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust,
+              let leaf = SecTrustGetCertificateAtIndex(serverTrust, 0)
+        else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        let certData = SecCertificateCopyData(leaf) as Data
+        let digest = SHA256.hash(data: certData).map { String(format: "%02x", $0) }.joined()
+        guard digest.caseInsensitiveCompare(expectedFingerprintSha256) == .orderedSame else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
     }
 }
 
