@@ -1,5 +1,19 @@
 # Run Local (M1)
 
+Simulator-first launch (no physical iPhone required):
+```bash
+./scripts/run-simulator.sh
+```
+
+With automatic QR payload import on launch:
+```bash
+./scripts/run-simulator.sh --qr-payload-path /absolute/path/to/pairing_qr_payload.json
+```
+
+The simulator app accepts bootstrap env vars:
+- `PROVINODE_SCAN_QR_PAYLOAD_PATH` (path to QR payload JSON file)
+- `PROVINODE_SCAN_QR_PAYLOAD_JSON` (raw QR payload JSON string)
+
 1. Build and install `provinode-scan` on iPhone Pro (LiDAR-capable).
 2. Start `provinode-room` AppHost on the same LAN.
 3. In Scan app:

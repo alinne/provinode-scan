@@ -3,6 +3,33 @@ import XCTest
 
 @MainActor
 final class CaptureViewModelTests: XCTestCase {
+    func testInitImportsQrPayloadFromEnvironmentJson() {
+        let viewModel = CaptureViewModel(environment: [
+            "PROVINODE_SCAN_QR_PAYLOAD_JSON": validPayloadJson()
+        ])
+
+        XCTAssertEqual(viewModel.status, "QR payload imported")
+        XCTAssertEqual(viewModel.pairingCode, "482915")
+        XCTAssertEqual(viewModel.pairingNonce, "01JNONCEABCDEFGHJKMNPQRSTV")
+        XCTAssertEqual(viewModel.manualHost, "192.168.1.44")
+    }
+
+    func testInitImportsQrPayloadFromEnvironmentPath() throws {
+        let payloadPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("json")
+        try validPayloadJson().write(to: payloadPath, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: payloadPath) }
+
+        let viewModel = CaptureViewModel(environment: [
+            "PROVINODE_SCAN_QR_PAYLOAD_PATH": payloadPath.path
+        ])
+
+        XCTAssertEqual(viewModel.status, "QR payload imported")
+        XCTAssertEqual(viewModel.pairingCode, "482915")
+        XCTAssertEqual(viewModel.manualHost, "192.168.1.44")
+    }
+
     func testApplyPairingQrPayloadImportsValues() {
         let viewModel = CaptureViewModel()
 
@@ -209,5 +236,23 @@ final class CaptureViewModelTests: XCTestCase {
         viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload QUIC endpoint is invalid")
+    }
+
+    private func validPayloadJson() -> String {
+        """
+        {
+          "pairing_token": "01JTQRPAIRTOKENABCDEFGHJK",
+          "pairing_code": "482915",
+          "pairing_nonce": "01JNONCEABCDEFGHJKMNPQRSTV",
+          "desktop_device_id": "01JDESKTOPABCDEFGHJKMNPQRS",
+          "desktop_display_name": "Room Receiver",
+          "pairing_endpoint": "https://192.168.1.44:7448/pairing/confirm",
+          "quic_endpoint": "192.168.1.44:7447",
+          "expires_at_utc": "2099-02-28T12:00:00Z",
+          "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "protocol_version": "1.1",
+          "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        }
+        """
     }
 }

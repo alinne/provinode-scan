@@ -30,7 +30,7 @@ final class CaptureViewModel: ObservableObject {
 
     private var pipeline: RoomCapturePipeline?
 
-    init() {
+    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         do {
             let trustStore = try TrustStore()
             self.trustStore = trustStore
@@ -41,6 +41,8 @@ final class CaptureViewModel: ObservableObject {
         } catch {
             fatalError("Unable to initialize scan app stores: \(error.localizedDescription)")
         }
+
+        applySimulatorBootstrapIfPresent(environment: environment)
     }
 
     func startDiscovery() async {
@@ -447,5 +449,32 @@ final class CaptureViewModel: ObservableObject {
         }
 
         return decoded.count == 32
+    }
+
+    private func applySimulatorBootstrapIfPresent(environment: [String: String]) {
+        #if targetEnvironment(simulator)
+        if let payloadPath = environment["PROVINODE_SCAN_QR_PAYLOAD_PATH"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !payloadPath.isEmpty
+        {
+            do {
+                let payload = try String(contentsOfFile: payloadPath, encoding: .utf8)
+                pairingQrPayloadJson = payload
+                applyPairingQrPayload(payload)
+                return
+            } catch {
+                status = "Simulator QR payload file failed to load: \(error.localizedDescription)"
+                return
+            }
+        }
+
+        if let payloadJson = environment["PROVINODE_SCAN_QR_PAYLOAD_JSON"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !payloadJson.isEmpty
+        {
+            pairingQrPayloadJson = payloadJson
+            applyPairingQrPayload(payloadJson)
+        }
+        #endif
     }
 }

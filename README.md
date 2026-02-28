@@ -33,6 +33,16 @@ xcodebuild \
 ./scripts/test.sh
 ```
 
+## Run In iOS Simulator
+```bash
+./scripts/run-simulator.sh
+```
+
+Optional QR bootstrap (imports payload automatically on launch):
+```bash
+./scripts/run-simulator.sh --qr-payload-path /absolute/path/to/pairing_qr_payload.json
+```
+
 ## M1 data output
 Recorded sessions are stored in app support with this layout:
 - `session.manifest.json`
