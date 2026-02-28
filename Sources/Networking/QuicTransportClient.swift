@@ -203,13 +203,17 @@ actor QuicTransportClient {
         var payloadSize = UInt32(payload.count).bigEndian
         withUnsafeBytes(of: &payloadSize) { frame.append(contentsOf: $0) }
         frame.append(payload)
+        let sessionId = activeSessionId
 
         connection.send(content: frame, completion: .contentProcessed { error in
             if let error {
                 StructuredLog.emit(
                     event: "quic_send_failed",
                     level: "error",
-                    fields: ["error": error.localizedDescription])
+                    fields: [
+                        "session_id": sessionId,
+                        "error": error.localizedDescription
+                    ])
                 Task { await self.handleConnectionFailure(error) }
             }
         })
@@ -285,7 +289,10 @@ actor QuicTransportClient {
                 StructuredLog.emit(
                     event: "quic_receive_failed",
                     level: "error",
-                    fields: ["error": error.localizedDescription])
+                    fields: [
+                        "session_id": activeSessionId,
+                        "error": error.localizedDescription
+                    ])
                 await handleConnectionFailure(error)
                 break
             }
@@ -519,6 +526,7 @@ actor QuicTransportClient {
                     event: "quic_reconnect_attempt_failed",
                     level: "error",
                     fields: [
+                        "session_id": activeSessionId,
                         "attempt": String(attempt),
                         "error": error.localizedDescription
                     ])

@@ -1,6 +1,8 @@
 import Foundation
 
 enum StructuredLog {
+    private static let runtimeCorrelationId = ULID.generate()
+
     static func emit(
         event: String,
         level: String = "info",
@@ -9,6 +11,9 @@ enum StructuredLog {
         var payload = fields
         payload["event"] = event
         payload["level"] = level
+        if payload["correlation_id"] == nil {
+            payload["correlation_id"] = runtimeCorrelationId
+        }
         payload["timestamp_utc"] = ISO8601DateFormatter.fractional.string(from: .now)
 
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
