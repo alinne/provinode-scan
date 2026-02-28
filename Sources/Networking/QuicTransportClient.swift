@@ -8,12 +8,14 @@ actor QuicTransportClient {
     private let maxBufferedSampleFrames = 512
     private var connection: NWConnection?
     private var receiveTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var secureSession: EngineSecureChannelCrypto.SessionKeys?
     private var outboundCounter: Int64 = 0
     private var inboundCounter: Int64 = -1
     private var receiveBuffer = Data()
     private var lastAckedSampleSeq: Int64 = -1
     private var activeSessionId = ""
+    private var connectionPlan: ConnectionPlan?
     private var bufferedSampleSessionId = ""
     private var bufferedSampleFrames: [Int64: Data] = [:]
     private var bufferedSampleOrder: [Int64] = []
@@ -30,76 +32,29 @@ actor QuicTransportClient {
         sessionId: String,
         scanIdentity: ScanIdentityMaterial
     ) async throws {
-        let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
-        sec_protocol_options_set_verify_block(quicOptions.securityProtocolOptions, { _, secTrust, complete in
-            let trustRef = sec_trust_copy_ref(secTrust).takeRetainedValue()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        closeConnection(resetReplayState: false, clearPlan: false)
 
-            guard let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate],
-                  let leaf = chain.first
-            else {
-                complete(false)
-                return
-            }
-
-            let certificateData = SecCertificateCopyData(leaf) as Data
-            let digest = SHA256.hash(data: certificateData).map { String(format: "%02x", $0) }.joined()
-            if let pinnedFingerprintSha256 {
-                complete(digest.caseInsensitiveCompare(pinnedFingerprintSha256) == .orderedSame)
-                return
-            }
-
-            var error: CFError?
-            complete(SecTrustEvaluateWithError(trustRef, &error))
-        }, DispatchQueue.global(qos: .userInitiated))
-
-        let parameters = NWParameters(quic: quicOptions)
-        parameters.allowLocalEndpointReuse = true
-
-        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
-            throw NSError(domain: "QuicTransportClient", code: 2000, userInfo: [NSLocalizedDescriptionKey: "Invalid port"])
-        }
-
-        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
-        let connection = NWConnection(to: endpoint, using: parameters)
-        try await waitUntilReadyAndStart(connection)
+        let plan = ConnectionPlan(
+            host: host,
+            port: port,
+            pinnedFingerprintSha256: pinnedFingerprintSha256,
+            sessionId: sessionId,
+            scanIdentity: scanIdentity)
+        connectionPlan = plan
 
         if bufferedSampleSessionId != sessionId {
             resetReplayBuffer(for: sessionId)
         }
 
-        self.connection = connection
-        self.activeSessionId = sessionId
-        self.receiveBuffer = Data()
-        self.inboundCounter = -1
-        try await performSecureHandshake(
-            connection: connection,
-            sessionId: sessionId,
-            scanIdentity: scanIdentity)
-
-        let resumeCheckpoint = ResumeCheckpoint(
-            session_id: sessionId,
-            last_acked_sample_seq: lastAckedSampleSeq,
-            captured_at_utc: ISO8601DateFormatter.fractional.string(from: .now),
-            stream_id: "scan-\(ULID.generate())")
-        try sendControl(resumeCheckpoint)
-
-        startReceiveLoop(connection: connection)
+        try await establishConnection(plan: plan, isReconnect: false)
     }
 
     func disconnect() {
-        receiveTask?.cancel()
-        receiveTask = nil
-        connection?.cancel()
-        connection = nil
-        secureSession = nil
-        outboundCounter = 0
-        inboundCounter = -1
-        receiveBuffer = Data()
-        activeSessionId = ""
-        bufferedSampleSessionId = ""
-        bufferedSampleFrames.removeAll(keepingCapacity: false)
-        bufferedSampleOrder.removeAll(keepingCapacity: false)
-        lastAckedSampleSeq = -1
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        closeConnection(resetReplayState: true, clearPlan: true)
     }
 
     func sendControl<T: Encodable>(_ value: T) throws {
@@ -117,8 +72,12 @@ actor QuicTransportClient {
         frame.append(envelopeData)
         frame.append(payload)
 
-        try sendPayload(channel: 0x02, payload: frame)
         bufferSampleFrame(sampleSeq: envelope.sample_seq, frame: frame)
+        guard secureSession != nil else {
+            return
+        }
+
+        try sendPayload(channel: 0x02, payload: frame)
     }
 
     private func sendPayload(channel: UInt8, payload: Data) throws {
@@ -242,6 +201,7 @@ actor QuicTransportClient {
         connection.send(content: frame, completion: .contentProcessed { error in
             if let error {
                 NSLog("QUIC send failed: \(error.localizedDescription)")
+                Task { await self.handleConnectionFailure(error) }
             }
         })
     }
@@ -314,6 +274,7 @@ actor QuicTransportClient {
                 try await processBufferedFrames()
             } catch {
                 NSLog("QUIC receive failed: \(error.localizedDescription)")
+                await handleConnectionFailure(error)
                 break
             }
         }
@@ -450,6 +411,133 @@ actor QuicTransportClient {
             try sendPayload(channel: 0x02, payload: frame)
         }
     }
+
+    private func establishConnection(plan: ConnectionPlan, isReconnect: Bool) async throws {
+        let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
+        sec_protocol_options_set_verify_block(quicOptions.securityProtocolOptions, { _, secTrust, complete in
+            let trustRef = sec_trust_copy_ref(secTrust).takeRetainedValue()
+
+            guard let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate],
+                  let leaf = chain.first
+            else {
+                complete(false)
+                return
+            }
+
+            let certificateData = SecCertificateCopyData(leaf) as Data
+            let digest = SHA256.hash(data: certificateData).map { String(format: "%02x", $0) }.joined()
+            if let pinnedFingerprintSha256 = plan.pinnedFingerprintSha256 {
+                complete(digest.caseInsensitiveCompare(pinnedFingerprintSha256) == .orderedSame)
+                return
+            }
+
+            var error: CFError?
+            complete(SecTrustEvaluateWithError(trustRef, &error))
+        }, DispatchQueue.global(qos: .userInitiated))
+
+        let parameters = NWParameters(quic: quicOptions)
+        parameters.allowLocalEndpointReuse = true
+
+        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(plan.port)) else {
+            throw NSError(domain: "QuicTransportClient", code: 2000, userInfo: [NSLocalizedDescriptionKey: "Invalid port"])
+        }
+
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(plan.host), port: nwPort)
+        let connection = NWConnection(to: endpoint, using: parameters)
+        try await waitUntilReadyAndStart(connection)
+
+        self.connection = connection
+        self.activeSessionId = plan.sessionId
+        self.receiveBuffer = Data()
+        self.inboundCounter = -1
+        try await performSecureHandshake(
+            connection: connection,
+            sessionId: plan.sessionId,
+            scanIdentity: plan.scanIdentity)
+
+        let resumeCheckpoint = ResumeCheckpoint(
+            session_id: plan.sessionId,
+            last_acked_sample_seq: lastAckedSampleSeq,
+            captured_at_utc: ISO8601DateFormatter.fractional.string(from: .now),
+            stream_id: isReconnect ? "scan-reconnect-\(ULID.generate())" : "scan-\(ULID.generate())")
+        try sendControl(resumeCheckpoint)
+
+        startReceiveLoop(connection: connection)
+    }
+
+    private func handleConnectionFailure(_ error: Error) async {
+        guard connectionPlan != nil else {
+            return
+        }
+
+        if reconnectTask != nil {
+            return
+        }
+
+        closeConnection(resetReplayState: false, clearPlan: false)
+        guard let plan = connectionPlan else {
+            return
+        }
+
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            await self.attemptReconnect(plan: plan)
+        }
+    }
+
+    private func attemptReconnect(plan: ConnectionPlan) async {
+        defer { reconnectTask = nil }
+
+        let maxAttempts = 5
+        for attempt in 1...maxAttempts {
+            if Task.isCancelled {
+                return
+            }
+
+            let delayNs = UInt64(pow(2.0, Double(attempt - 1)) * 250_000_000)
+            if attempt > 1 {
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+
+            do {
+                try await establishConnection(plan: plan, isReconnect: true)
+                return
+            } catch {
+                NSLog("QUIC reconnect attempt \(attempt) failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func closeConnection(resetReplayState: Bool, clearPlan: Bool) {
+        receiveTask?.cancel()
+        receiveTask = nil
+        connection?.cancel()
+        connection = nil
+        secureSession = nil
+        outboundCounter = 0
+        inboundCounter = -1
+        receiveBuffer = Data()
+        activeSessionId = ""
+
+        if clearPlan {
+            connectionPlan = nil
+        }
+
+        if resetReplayState {
+            bufferedSampleSessionId = ""
+            bufferedSampleFrames.removeAll(keepingCapacity: false)
+            bufferedSampleOrder.removeAll(keepingCapacity: false)
+            lastAckedSampleSeq = -1
+        }
+    }
+}
+
+private struct ConnectionPlan: Sendable {
+    let host: String
+    let port: Int
+    let pinnedFingerprintSha256: String?
+    let sessionId: String
+    let scanIdentity: ScanIdentityMaterial
 }
 
 private final class ConnectionStartContinuationBox: @unchecked Sendable {
