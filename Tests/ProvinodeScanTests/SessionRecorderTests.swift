@@ -31,11 +31,23 @@ final class SessionRecorderTests: XCTestCase {
             metadata: nil)
 
         try await recorder.record(envelope: envelope, payload: payload)
-        let sessionDirectory = try await recorder.finalize()
+        let sessionDirectory = try await recorder.finalize(extraMetadata: [
+            RoomMetadataKeys.pairedPeerDeviceId: "desktop-1",
+            RoomMetadataKeys.pairedPeerCertFingerprintSha256: String(repeating: "f", count: 64)
+        ])
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent("session.manifest.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent("integrity.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent("samples.log").path))
+
+        let manifestData = try Data(contentsOf: sessionDirectory.appendingPathComponent("session.manifest.json"))
+        let manifest = try JSONDecoder().decode(RoomCaptureSessionManifest.self, from: manifestData)
+        XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.roomSessionId], sessionId)
+        XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.sourceDeviceId], "test-device")
+        XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.pairedPeerDeviceId], "desktop-1")
+        XCTAssertEqual(
+            manifest.metadata?[RoomMetadataKeys.pairedPeerCertFingerprintSha256],
+            String(repeating: "f", count: 64))
     }
 
     func testUlidHasExpectedLength() {
