@@ -446,6 +446,6 @@ final class CaptureViewModel: ObservableObject {
             return false
         }
 
-        return !decoded.isEmpty
+        return decoded.count == 32
     }
 }
