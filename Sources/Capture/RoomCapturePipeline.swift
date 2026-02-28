@@ -51,6 +51,16 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         session.pause()
         isRunning = false
 
+        let stopHeartbeatPayload = Data("session_end".utf8)
+        await emit(
+            kind: .heartbeat,
+            captureTimeNs: Int64(DispatchTime.now().uptimeNanoseconds),
+            payload: stopHeartbeatPayload,
+            metadata: [
+                "session_end": "true",
+                "frame_counter": String(frameCounter)
+            ])
+
         let summaryMetadata = [
             "samples_total": String(metrics.emittedSamples),
             "samples_dropped": String(metrics.droppedSamples)
