@@ -9,4 +9,5 @@
 - Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint verification in the client.
 - Secure-channel hello carries scanner device identity + fingerprint + scanner signing public key + signed hello proof.
 - Resume checkpoints and backpressure hints are exchanged on encrypted control payloads.
+- Scanner buffers recent sample frames and replays missing tail samples when desktop sends resume control requests.
 - Every sample payload is SHA-256 hashed before recording and streaming.

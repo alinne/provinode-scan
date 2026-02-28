@@ -5,6 +5,7 @@ import ProvinodeRoomContracts
 import Security
 
 actor QuicTransportClient {
+    private let maxBufferedSampleFrames = 512
     private var connection: NWConnection?
     private var receiveTask: Task<Void, Never>?
     private var secureSession: EngineSecureChannelCrypto.SessionKeys?
@@ -13,6 +14,9 @@ actor QuicTransportClient {
     private var receiveBuffer = Data()
     private var lastAckedSampleSeq: Int64 = -1
     private var activeSessionId = ""
+    private var bufferedSampleSessionId = ""
+    private var bufferedSampleFrames: [Int64: Data] = [:]
+    private var bufferedSampleOrder: [Int64] = []
     private var backpressureHandler: (@Sendable (BackpressureHint) async -> Void)?
 
     func setBackpressureHandler(_ handler: (@Sendable (BackpressureHint) async -> Void)?) {
@@ -59,6 +63,10 @@ actor QuicTransportClient {
         let connection = NWConnection(to: endpoint, using: parameters)
         try await waitUntilReadyAndStart(connection)
 
+        if bufferedSampleSessionId != sessionId {
+            resetReplayBuffer(for: sessionId)
+        }
+
         self.connection = connection
         self.activeSessionId = sessionId
         self.receiveBuffer = Data()
@@ -88,6 +96,10 @@ actor QuicTransportClient {
         inboundCounter = -1
         receiveBuffer = Data()
         activeSessionId = ""
+        bufferedSampleSessionId = ""
+        bufferedSampleFrames.removeAll(keepingCapacity: false)
+        bufferedSampleOrder.removeAll(keepingCapacity: false)
+        lastAckedSampleSeq = -1
     }
 
     func sendControl<T: Encodable>(_ value: T) throws {
@@ -106,6 +118,7 @@ actor QuicTransportClient {
         frame.append(payload)
 
         try sendPayload(channel: 0x02, payload: frame)
+        bufferSampleFrame(sampleSeq: envelope.sample_seq, frame: frame)
     }
 
     private func sendPayload(channel: UInt8, payload: Data) throws {
@@ -378,6 +391,11 @@ actor QuicTransportClient {
            checkpoint.session_id == activeSessionId
         {
             lastAckedSampleSeq = max(lastAckedSampleSeq, checkpoint.last_acked_sample_seq)
+            trimReplayBuffer(ackedThrough: lastAckedSampleSeq)
+
+            if checkpoint.stream_id == "desktop-resume" {
+                try replayBufferedSamples(after: checkpoint.last_acked_sample_seq)
+            }
             return
         }
 
@@ -385,6 +403,55 @@ actor QuicTransportClient {
            let backpressureHandler
         {
             await backpressureHandler(hint)
+        }
+    }
+
+    private func resetReplayBuffer(for sessionId: String) {
+        bufferedSampleSessionId = sessionId
+        bufferedSampleFrames.removeAll(keepingCapacity: true)
+        bufferedSampleOrder.removeAll(keepingCapacity: true)
+        lastAckedSampleSeq = -1
+    }
+
+    private func bufferSampleFrame(sampleSeq: Int64, frame: Data) {
+        if bufferedSampleSessionId != activeSessionId {
+            resetReplayBuffer(for: activeSessionId)
+        }
+
+        if bufferedSampleFrames[sampleSeq] == nil {
+            bufferedSampleOrder.append(sampleSeq)
+        }
+
+        bufferedSampleFrames[sampleSeq] = frame
+        trimReplayBuffer(ackedThrough: lastAckedSampleSeq)
+
+        while bufferedSampleOrder.count > maxBufferedSampleFrames {
+            let oldest = bufferedSampleOrder.removeFirst()
+            bufferedSampleFrames.removeValue(forKey: oldest)
+        }
+    }
+
+    private func trimReplayBuffer(ackedThrough ackedSampleSeq: Int64) {
+        guard ackedSampleSeq >= 0 else { return }
+        bufferedSampleOrder.removeAll { seq in
+            if seq <= ackedSampleSeq {
+                bufferedSampleFrames.removeValue(forKey: seq)
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private func replayBufferedSamples(after ackedSampleSeq: Int64) throws {
+        guard !bufferedSampleOrder.isEmpty else { return }
+        let pending = bufferedSampleOrder
+            .filter { $0 > ackedSampleSeq }
+            .sorted()
+
+        for seq in pending {
+            guard let frame = bufferedSampleFrames[seq] else { continue }
+            try sendPayload(channel: 0x02, payload: frame)
         }
     }
 }
