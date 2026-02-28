@@ -50,7 +50,7 @@ final class LanDiscoveryService: NSObject, ObservableObject {
     }
 }
 
-@MainActor extension LanDiscoveryService: NetServiceBrowserDelegate {
+@MainActor extension LanDiscoveryService: @preconcurrency NetServiceBrowserDelegate {
     func netServiceBrowser(
         _ browser: NetServiceBrowser,
         didFind service: NetService,
@@ -89,7 +89,7 @@ final class LanDiscoveryService: NSObject, ObservableObject {
     }
 }
 
-@MainActor extension LanDiscoveryService: NetServiceDelegate {
+@MainActor extension LanDiscoveryService: @preconcurrency NetServiceDelegate {
     func netServiceDidResolveAddress(_ sender: NetService) {
         let serviceKey = key(for: sender)
 

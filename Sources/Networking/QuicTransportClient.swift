@@ -248,17 +248,13 @@ actor QuicTransportClient {
 
     private func waitUntilReadyAndStart(_ connection: NWConnection) async throws {
         try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
+            let continuationBox = ConnectionStartContinuationBox(continuation)
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    guard !resumed else { return }
-                    resumed = true
-                    continuation.resume()
+                    continuationBox.resume()
                 case .failed(let error):
-                    guard !resumed else { return }
-                    resumed = true
-                    continuation.resume(throwing: error)
+                    continuationBox.resume(throwing: error)
                 default:
                     break
                 }
@@ -453,6 +449,32 @@ actor QuicTransportClient {
             guard let frame = bufferedSampleFrames[seq] else { continue }
             try sendPayload(channel: 0x02, payload: frame)
         }
+    }
+}
+
+private final class ConnectionStartContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private let continuation: CheckedContinuation<Void, Error>
+    private var didResume = false
+
+    init(_ continuation: CheckedContinuation<Void, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        continuation.resume()
+    }
+
+    func resume(throwing error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        continuation.resume(throwing: error)
     }
 }
 
