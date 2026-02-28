@@ -99,7 +99,7 @@ final class CaptureViewModel: ObservableObject {
         }
 
         if let endpoint = resolvedStreamingEndpoint(),
-           let trustedPeer = await trustStore.trustedPeer(deviceId: endpoint.desktopDeviceId)
+           let trustedPeer = await trustedPeer(for: endpoint)
         {
             do {
                 try await transport.connect(
@@ -240,5 +240,25 @@ final class CaptureViewModel: ObservableObject {
             pairingCertFingerprintSha256: manualFingerprint.isEmpty ? nil : manualFingerprint,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
+    }
+
+    private func trustedPeer(for endpoint: PairingEndpoint) async -> TrustRecord? {
+        if let trusted = await trustStore.trustedPeer(deviceId: endpoint.desktopDeviceId) {
+            return trusted
+        }
+
+        guard endpoint.desktopDeviceId == "manual-endpoint",
+              let fingerprint = endpoint.pairingCertFingerprintSha256?.lowercased(),
+              !fingerprint.isEmpty
+        else {
+            return nil
+        }
+
+        let trustedByFingerprint = await trustStore.all().first {
+            $0.peer_cert_fingerprint_sha256.caseInsensitiveCompare(fingerprint) == .orderedSame &&
+                $0.status.caseInsensitiveCompare("trusted") == .orderedSame
+        }
+
+        return trustedByFingerprint
     }
 }
