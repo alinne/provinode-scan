@@ -25,6 +25,7 @@
 		BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */; };
 		CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */; };
 		D00F1900539F37B37DD704CE /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94414950604717D1A400ED1 /* PairingService.swift */; };
+		D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */; };
 		EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */; };
 		F14F07128D4F82DDF8BDE3D2 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
 		FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */; };
@@ -48,6 +49,7 @@
 		2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderTests.swift; sourceTree = "<group>"; };
 		30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCapturePipeline.swift; sourceTree = "<group>"; };
 		491E01F2795C326330EBF354 /* CaptureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModel.swift; sourceTree = "<group>"; };
+		5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModelTests.swift; sourceTree = "<group>"; };
 		6E28A27C0A0003BCC8E2D4A5 /* ProvinodeScanTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ProvinodeScanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sha256.swift; sourceTree = "<group>"; };
 		703680052CF0712179BDB312 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -206,6 +208,7 @@
 		F617CAA5C9B5A5B68012D214 /* ProvinodeScanTests */ = {
 			isa = PBXGroup;
 			children = (
+				5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */,
 				DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */,
 				2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */,
 			);
@@ -317,6 +320,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */,
 				BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */,
 				AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */,
 			);

@@ -134,7 +134,7 @@ final class CaptureViewModel: ObservableObject {
             selectedEndpoint = nil
             status = "QR payload imported"
         } catch {
-            status = "QR payload parse failed: \\(error.localizedDescription)"
+            status = "QR payload parse failed: \(error.localizedDescription)"
         }
     }
 
