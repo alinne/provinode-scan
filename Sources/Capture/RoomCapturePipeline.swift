@@ -16,6 +16,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private let transport: QuicTransportClient?
     private let sessionId: String
     private let sourceDeviceId: String
+    private let sessionMetadata: [String: String]
     private let clockId = "arkit.monotonic.v1"
 
     private var frameCounter: Int64 = 0
@@ -26,12 +27,19 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var depthStride = 1
     private var dropNonKeyframes = false
 
-    init(sessionId: String, sourceDeviceId: String, recorder: SessionRecorder, transport: QuicTransportClient?) {
+    init(
+        sessionId: String,
+        sourceDeviceId: String,
+        sessionMetadata: [String: String] = [:],
+        recorder: SessionRecorder,
+        transport: QuicTransportClient?
+    ) {
         self.session = ARSession()
         self.recorder = recorder
         self.transport = transport
         self.sessionId = sessionId
         self.sourceDeviceId = sourceDeviceId
+        self.sessionMetadata = sessionMetadata
         super.init()
         self.session.delegate = self
     }
@@ -62,10 +70,13 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 "frame_counter": String(frameCounter)
             ])
 
-        let summaryMetadata = [
+        var summaryMetadata = [
             "samples_total": String(metrics.emittedSamples),
             "samples_dropped": String(metrics.droppedSamples)
         ]
+        for (key, value) in sessionMetadata {
+            summaryMetadata[key] = value
+        }
         return try await recorder.finalize(extraMetadata: summaryMetadata)
     }
 
@@ -133,7 +144,10 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         let hash = Sha256.hex(of: payload)
         let sampleSeq = await sequencer.next()
 
-        var metadataWithSource = metadata ?? [:]
+        var metadataWithSource = sessionMetadata
+        if let metadata {
+            metadataWithSource.merge(metadata, uniquingKeysWith: { _, new in new })
+        }
         metadataWithSource[RoomMetadataKeys.sourceDeviceId] = sourceDeviceId
 
         let envelope = CaptureSampleEnvelope(

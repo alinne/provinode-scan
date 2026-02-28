@@ -102,6 +102,7 @@ final class CaptureViewModel: ObservableObject {
 
         let sessionId = ULID.generate()
         var activeTransport: QuicTransportClient?
+        var sessionMetadata: [String: String] = [:]
         let recorder: SessionRecorder
         do {
             recorder = try SessionRecorder(
@@ -116,6 +117,9 @@ final class CaptureViewModel: ObservableObject {
         if let endpoint = resolvedStreamingEndpoint(),
            let trustedPeer = await trustedPeer(for: endpoint)
         {
+            sessionMetadata[RoomMetadataKeys.pairedPeerDeviceId] = trustedPeer.peer_device_id
+            sessionMetadata[RoomMetadataKeys.pairedPeerCertFingerprintSha256] = trustedPeer.peer_cert_fingerprint_sha256
+
             if let scanClientMtlsIdentity = scanIdentityStore.clientTlsIdentity() {
                 do {
                     try await transport.connect(
@@ -143,6 +147,7 @@ final class CaptureViewModel: ObservableObject {
         let capturePipeline = RoomCapturePipeline(
             sessionId: sessionId,
             sourceDeviceId: scanIdentity.deviceId,
+            sessionMetadata: sessionMetadata,
             recorder: recorder,
             transport: activeTransport)
         self.pipeline = capturePipeline
