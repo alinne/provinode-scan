@@ -24,6 +24,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var keyframeIntervalSec: TimeInterval = 0.25
     private var meshIntervalSec: TimeInterval = 0.8
     private var depthStride = 1
+    private var dropNonKeyframes = false
 
     init(sessionId: String, sourceDeviceId: String, recorder: SessionRecorder, transport: QuicTransportClient?) {
         self.session = ARSession()
@@ -72,6 +73,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         keyframeIntervalSec = hint.target_keyframe_fps <= 0 ? 1.0 : max(0.1, 1.0 / Double(hint.target_keyframe_fps))
         depthStride = max(1, hint.depth_stride)
         meshIntervalSec = max(0.1, Double(hint.mesh_update_interval_ms) / 1000.0)
+        dropNonKeyframes = hint.drop_non_keyframes
     }
 
     private func process(frame: ARFrame) async {
@@ -88,12 +90,16 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
             metrics.keyframeCount += 1
         }
 
-        if frameCounter % Int64(depthStride) == 0, let depthPayload = depthPayload(from: frame.sceneDepth?.depthMap) {
+        if !dropNonKeyframes,
+           frameCounter % Int64(depthStride) == 0,
+           let depthPayload = depthPayload(from: frame.sceneDepth?.depthMap)
+        {
             await emit(kind: .depthFrame, captureTimeNs: captureTimeNs, payload: depthPayload, metadata: ["format": "depth32f"])
             metrics.depthCount += 1
         }
 
-        if frame.timestamp - lastMeshTimestamp >= meshIntervalSec,
+        if !dropNonKeyframes,
+           frame.timestamp - lastMeshTimestamp >= meshIntervalSec,
            let meshPayload = meshPayload(from: frame.anchors) {
             lastMeshTimestamp = frame.timestamp
             await emit(kind: .meshAnchorBatch, captureTimeNs: captureTimeNs, payload: meshPayload, metadata: ["format": "mesh_anchor_batch_v2"])
