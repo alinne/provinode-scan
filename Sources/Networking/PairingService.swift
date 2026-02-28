@@ -4,6 +4,7 @@ import ProvinodeRoomContracts
 struct PairingEndpoint: Codable, Hashable {
     let host: String
     let port: Int
+    let quicPort: Int
     let displayName: String
     let desktopDeviceId: String
 }
@@ -45,7 +46,25 @@ actor PairingService {
             pairing_code: pairingCode,
             pairing_confirm: confirmPayload))
 
-        var request = URLRequest(url: URL(string: "https://\(endpoint.host):\(endpoint.port)/pairing/confirm")!)
+        let baseHost = endpoint.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hostWithScheme: String
+        if baseHost.hasPrefix("http://") || baseHost.hasPrefix("https://") {
+            hostWithScheme = baseHost
+        } else {
+            hostWithScheme = "http://\(baseHost)"
+        }
+
+        guard var components = URLComponents(string: hostWithScheme) else {
+            throw PairingError.serverRejected
+        }
+        components.port = endpoint.port
+        components.path = "/pairing/confirm"
+
+        guard let url = components.url else {
+            throw PairingError.serverRejected
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = requestBody

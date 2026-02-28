@@ -18,5 +18,11 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_provinode-room._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Provinode Scan discovers nearby Provinode Room receivers on your local network.</string>
 </dict>
 </plist>

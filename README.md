@@ -37,4 +37,9 @@ Recorded sessions are stored in app support with this layout:
 - `blobs/sha256/<hash>`
 - `integrity.json`
 
+## LAN discovery
+- Bonjour service browse type: `_provinode-room._tcp`
+- Discovery metadata is limited to endpoint identity and ports.
+- Manual host entry remains available as fallback.
+
 See `docs` in the desktop repo for Vault mapping and reconstruction linkage.

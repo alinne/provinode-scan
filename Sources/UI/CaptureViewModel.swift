@@ -114,32 +114,36 @@ final class CaptureViewModel: ObservableObject {
             status = "No trusted desktop selected, recording locally only"
         }
 
-        let pipeline = RoomCapturePipeline(
+        let capturePipeline = RoomCapturePipeline(
             sessionId: sessionId,
             sourceDeviceId: deviceId,
             recorder: recorder,
             transport: resolvedStreamingEndpoint() == nil ? nil : transport)
-        await transport.setBackpressureHandler { [weak pipeline] hint in
+        self.pipeline = capturePipeline
+
+        await transport.setBackpressureHandler { [weak self] hint in
             await MainActor.run {
-                pipeline?.applyBackpressureHint(hint)
+                self?.pipeline?.applyBackpressureHint(hint)
             }
         }
 
         do {
-            try pipeline.start()
-            self.pipeline = pipeline
+            try capturePipeline.start()
             isCapturing = true
             status = "Capturing"
 
             Task { [weak self] in
                 while let self, self.isCapturing {
-                    self.metrics = pipeline.metrics
+                    if let pipeline = self.pipeline {
+                        self.metrics = pipeline.metrics
+                    }
                     try? await Task.sleep(for: .seconds(1))
                 }
             }
         } catch {
             status = "Capture start failed: \(error.localizedDescription)"
             await transport.disconnect()
+            self.pipeline = nil
         }
     }
 
@@ -197,6 +201,7 @@ final class CaptureViewModel: ObservableObject {
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
             port: port,
+            quicPort: 7447,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
     }
@@ -205,7 +210,8 @@ final class CaptureViewModel: ObservableObject {
         if let selectedEndpoint {
             return PairingEndpoint(
                 host: selectedEndpoint.host,
-                port: 7447,
+                port: selectedEndpoint.quicPort,
+                quicPort: selectedEndpoint.quicPort,
                 displayName: selectedEndpoint.displayName,
                 desktopDeviceId: selectedEndpoint.desktopDeviceId)
         }
@@ -217,6 +223,7 @@ final class CaptureViewModel: ObservableObject {
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
             port: 7447,
+            quicPort: 7447,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
     }
