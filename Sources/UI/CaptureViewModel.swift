@@ -8,9 +8,13 @@ final class CaptureViewModel: ObservableObject {
     @Published var selectedEndpoint: PairingEndpoint?
     @Published var manualHost: String = ""
     @Published var manualPort: String = "7448"
+    @Published var manualQuicPort: String = "7447"
     @Published var manualPairingFingerprintSha256: String = ""
     @Published var pairingCode: String = ""
     @Published var pairingNonce: String = ""
+    @Published var pairingQrPayloadJson: String = ""
+    @Published var isQrScannerPresented = false
+    @Published var isCalibrationPatternPresented = false
     @Published var status: String = "Idle"
     @Published var isCapturing = false
     @Published var metrics = ScanSessionMetrics()
@@ -95,6 +99,49 @@ final class CaptureViewModel: ObservableObject {
         } catch {
             status = "Pairing failed: \(error.localizedDescription)"
         }
+    }
+
+    func applyPairingQrPayload(_ rawPayload: String) {
+        let trimmed = rawPayload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            status = "QR payload is empty"
+            return
+        }
+
+        guard let data = trimmed.data(using: .utf8) else {
+            status = "QR payload is not UTF-8"
+            return
+        }
+
+        do {
+            let payload = try JSONDecoder().decode(PairingQrPayload.self, from: data)
+            guard let pairingUrl = URL(string: payload.pairing_endpoint) else {
+                status = "QR payload pairing endpoint is invalid"
+                return
+            }
+
+            manualHost = pairingUrl.host ?? manualHost
+            manualPort = String(pairingUrl.port ?? 7448)
+            manualPairingFingerprintSha256 = payload.desktop_cert_fingerprint_sha256.lowercased()
+            pairingCode = payload.pairing_code
+            pairingNonce = payload.pairing_nonce
+
+            if let quicHostPort = parseHostAndPort(payload.quic_endpoint) {
+                manualHost = quicHostPort.host
+                manualQuicPort = String(quicHostPort.port)
+            }
+
+            selectedEndpoint = nil
+            status = "QR payload imported"
+        } catch {
+            status = "QR payload parse failed: \\(error.localizedDescription)"
+        }
+    }
+
+    func onQrScanResult(_ payload: String) {
+        pairingQrPayloadJson = payload
+        applyPairingQrPayload(payload)
+        isQrScannerPresented = false
     }
 
     func startCapture() async {
@@ -234,7 +281,7 @@ final class CaptureViewModel: ObservableObject {
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
             port: port,
-            quicPort: 7447,
+            quicPort: Int(manualQuicPort) ?? 7447,
             pairingScheme: "https",
             pairingCertFingerprintSha256: fingerprint.isEmpty ? nil : fingerprint,
             displayName: "Manual endpoint",
@@ -260,10 +307,11 @@ final class CaptureViewModel: ObservableObject {
         let manualFingerprint = manualPairingFingerprintSha256
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+        let quicPort = Int(manualQuicPort) ?? 7447
         return PairingEndpoint(
             host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: 7447,
-            quicPort: 7447,
+            port: quicPort,
+            quicPort: quicPort,
             pairingScheme: "https",
             pairingCertFingerprintSha256: manualFingerprint.isEmpty ? nil : manualFingerprint,
             displayName: "Manual endpoint",
@@ -292,5 +340,19 @@ final class CaptureViewModel: ObservableObject {
 
     private func applyBackpressureHint(_ hint: BackpressureHint) {
         pipeline?.applyBackpressureHint(hint)
+    }
+
+    private func parseHostAndPort(_ value: String) -> (host: String, port: Int)? {
+        if let asUrl = URL(string: value),
+           let host = asUrl.host {
+            return (host, asUrl.port ?? 7447)
+        }
+
+        let parts = value.split(separator: ":", omittingEmptySubsequences: true)
+        guard parts.count == 2, let port = Int(parts[1]) else {
+            return nil
+        }
+
+        return (String(parts[0]), port)
     }
 }

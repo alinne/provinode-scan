@@ -3,8 +3,10 @@
 Native iOS app for Provinode room scanning (M1):
 - LiDAR-gated ARKit capture
 - secure LAN pairing + QUIC streaming
+- QR-first pairing (camera scan on device, JSON import fallback on simulator)
 - local-first `RoomCaptureSession` recording/export
 - persistent scanner identity key for signed secure-channel hello proof
+- simulator synthetic capture mode for end-to-end validation without physical LiDAR
 
 ## Requirements
 - iPhone Pro with LiDAR (`iPhone 12 Pro` or newer Pro line)
@@ -42,5 +44,11 @@ Recorded sessions are stored in app support with this layout:
 - Bonjour service browse type: `_provinode-room._tcp`
 - Discovery metadata includes endpoint identity, ports, and pairing TLS cert fingerprint.
 - Manual host entry remains available with explicit pairing TLS fingerprint input.
+
+## Simulator workflow
+- Start `provinode-room` in simulation mode (`--simulation-mode true --webcam-source synthetic --calibration-source synthetic`).
+- Call `POST /pairing/start` on desktop and copy `pairing_qr_payload` JSON.
+- Paste payload into the iOS simulator QR import panel and tap `Import QR payload`.
+- Pair, start capture, and stream synthetic samples to desktop receiver.
 
 See `docs` in the desktop repo for Vault mapping and reconstruction linkage.

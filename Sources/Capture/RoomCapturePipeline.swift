@@ -26,6 +26,8 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var meshIntervalSec: TimeInterval = 0.8
     private var depthStride = 1
     private var dropNonKeyframes = false
+    private var syntheticTask: Task<Void, Never>?
+    private var syntheticStartedAt = Date()
 
     init(
         sessionId: String,
@@ -47,6 +49,12 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     func start() throws {
         try DeviceCapabilityPolicy.enforce()
 
+        #if targetEnvironment(simulator)
+        syntheticStartedAt = Date()
+        isRunning = true
+        startSyntheticCaptureLoop()
+        #else
+
         let configuration = ARWorldTrackingConfiguration()
         configuration.frameSemantics.insert(.sceneDepth)
         configuration.sceneReconstruction = .mesh
@@ -54,10 +62,16 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         isRunning = true
+        #endif
     }
 
     func stop() async throws -> URL {
+        syntheticTask?.cancel()
+        syntheticTask = nil
+
+        #if !targetEnvironment(simulator)
         session.pause()
+        #endif
         isRunning = false
 
         let stopHeartbeatPayload = Data("session_end".utf8)
@@ -85,6 +99,96 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         depthStride = max(1, hint.depth_stride)
         meshIntervalSec = max(0.1, Double(hint.mesh_update_interval_ms) / 1000.0)
         dropNonKeyframes = hint.drop_non_keyframes
+    }
+
+    private func startSyntheticCaptureLoop() {
+        syntheticTask?.cancel()
+        syntheticTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled && self.isRunning {
+                self.frameCounter += 1
+                let uptimeNs = Int64(DispatchTime.now().uptimeNanoseconds)
+                let elapsed = Date().timeIntervalSince(self.syntheticStartedAt)
+                let theta = elapsed * 0.25
+
+                let poseMatrix: [Float] = [
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    Float(cos(theta) * 1.2), 1.45, Float(sin(theta) * 1.2), 1
+                ]
+
+                if let posePayload = try? JSONEncoder().encode(PosePayload(matrix: poseMatrix)) {
+                    await self.emit(kind: .cameraPose, captureTimeNs: uptimeNs, payload: posePayload, metadata: ["pose_confidence": "0.92"])
+                }
+
+                if let intrinsicsPayload = try? JSONEncoder().encode(
+                    IntrinsicsPayload(
+                        matrix: [1200, 0, 960, 0, 1200, 540, 0, 0, 1],
+                        resolution: [1920, 1080])) {
+                    await self.emit(kind: .intrinsics, captureTimeNs: uptimeNs, payload: intrinsicsPayload, metadata: nil)
+                }
+
+                let syntheticTimestamp = elapsed
+                let shouldEmitKeyframe = syntheticTimestamp - self.lastKeyframeTimestamp >= self.keyframeIntervalSec
+                if shouldEmitKeyframe {
+                    self.lastKeyframeTimestamp = syntheticTimestamp
+                    let keyframe = Data(repeating: UInt8(self.frameCounter % 255), count: 2048)
+                    await self.emit(kind: .keyframeRgb, captureTimeNs: uptimeNs, payload: keyframe, metadata: ["mime": "image/raw-sim"])
+                    self.metrics.keyframeCount += 1
+                }
+
+                if !self.dropNonKeyframes && self.frameCounter % Int64(self.depthStride) == 0 {
+                    let depth = Data(repeating: UInt8((self.frameCounter * 3) % 255), count: 640 * 480 * 2)
+                    await self.emit(kind: .depthFrame, captureTimeNs: uptimeNs, payload: depth, metadata: ["format": "depth16-sim"])
+                    self.metrics.depthCount += 1
+                }
+
+                if !self.dropNonKeyframes && syntheticTimestamp - self.lastMeshTimestamp >= self.meshIntervalSec {
+                    self.lastMeshTimestamp = syntheticTimestamp
+                    if let mesh = self.syntheticMeshPayload(theta: theta) {
+                        await self.emit(kind: .meshAnchorBatch, captureTimeNs: uptimeNs, payload: mesh, metadata: ["format": "mesh_anchor_batch_sim"])
+                        self.metrics.meshCount += 1
+                    }
+                }
+
+                self.metrics.avgKeyframeFps = self.metrics.keyframeCount > 0
+                    ? Double(self.metrics.keyframeCount) / max(elapsed, 1)
+                    : 0
+
+                if self.frameCounter % 30 == 0 {
+                    await self.emit(
+                        kind: .heartbeat,
+                        captureTimeNs: uptimeNs,
+                        payload: Data("heartbeat".utf8),
+                        metadata: ["frame_counter": String(self.frameCounter)])
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    private func syntheticMeshPayload(theta: Double) -> Data? {
+        let tx = Float(cos(theta) * 0.5)
+        let tz = Float(sin(theta) * 0.5)
+        let entry = MeshAnchorGeometryPayload(
+            identifier: "synthetic-anchor",
+            transform: [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                tx, 0, tz, 1
+            ],
+            vertices: [
+                -1, 0, -1,
+                1, 0, -1,
+                1, 0, 1,
+                -1, 0, 1
+            ],
+            faceIndices: [0, 1, 2, 0, 2, 3])
+        return try? JSONEncoder().encode([entry])
     }
 
     private func process(frame: ARFrame) async {

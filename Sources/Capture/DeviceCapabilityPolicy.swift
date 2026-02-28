@@ -21,6 +21,11 @@ struct DeviceCapabilityPolicy {
             throw DeviceCapabilityPolicyError.unsupportedIos
         }
 
+        #if targetEnvironment(simulator)
+        // Simulator path uses synthetic capture fixtures for development/testing.
+        return
+        #else
+
         guard ARWorldTrackingConfiguration.isSupported else {
             throw DeviceCapabilityPolicyError.unsupportedDevice
         }
@@ -32,5 +37,6 @@ struct DeviceCapabilityPolicy {
         guard ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) else {
             throw DeviceCapabilityPolicyError.unsupportedDevice
         }
+        #endif
     }
 }

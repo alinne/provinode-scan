@@ -20,6 +20,7 @@ targets:
       properties:
         NSBonjourServices:
           - _provinode-room._tcp
+        NSCameraUsageDescription: Provinode Scan uses the camera to scan desktop pairing QR codes.
         NSLocalNetworkUsageDescription: Provinode Scan discovers nearby Provinode Room receivers on your local network.
     settings:
       base:

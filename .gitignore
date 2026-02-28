@@ -4,3 +4,5 @@ DerivedData/
 *.xcworkspace
 *.xcodeproj/project.xcworkspace/
 .swiftpm/
+*.xcuserdatad/
+*.xcuserstate

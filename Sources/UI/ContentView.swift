@@ -9,6 +9,34 @@ struct ContentView: View {
                 Section("Device policy") {
                     Text("iOS 17.0+ and LiDAR-capable iPhone Pro required")
                         .font(.footnote)
+                    #if targetEnvironment(simulator)
+                    Text("Simulator mode: synthetic capture data is used for M1/M2 end-to-end testing.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    #endif
+                }
+
+                Section("QR pairing") {
+                    #if !targetEnvironment(simulator)
+                    Button("Scan Desktop QR") {
+                        vm.isQrScannerPresented = true
+                    }
+                    #else
+                    Text("Simulator cannot use camera scanning. Paste QR payload JSON below.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    #endif
+
+                    TextEditor(text: $vm.pairingQrPayloadJson)
+                        .frame(minHeight: 110)
+                        .font(.system(.footnote, design: .monospaced))
+                    Button("Import QR payload") {
+                        vm.applyPairingQrPayload(vm.pairingQrPayloadJson)
+                    }
+
+                    Button("Show calibration pattern") {
+                        vm.isCalibrationPatternPresented = true
+                    }
                 }
 
                 Section("Desktop endpoint") {
@@ -27,6 +55,8 @@ struct ContentView: View {
                     TextField("Manual host (e.g. 192.168.1.10)", text: $vm.manualHost)
                         .textInputAutocapitalization(.never)
                     TextField("Pairing port", text: $vm.manualPort)
+                        .keyboardType(.numberPad)
+                    TextField("QUIC port", text: $vm.manualQuicPort)
                         .keyboardType(.numberPad)
                     TextField("Manual pairing cert fingerprint (sha256)", text: $vm.manualPairingFingerprintSha256)
                         .textInputAutocapitalization(.never)
@@ -81,6 +111,14 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Provinode Scan")
+        }
+        .sheet(isPresented: $vm.isQrScannerPresented) {
+            QrScannerView { value in
+                vm.onQrScanResult(value)
+            }
+        }
+        .sheet(isPresented: $vm.isCalibrationPatternPresented) {
+            CalibrationPatternView()
         }
         .task {
             await vm.startDiscovery()

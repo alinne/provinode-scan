@@ -22,6 +22,8 @@
 	<array>
 		<string>_provinode-room._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Provinode Scan uses the camera to scan desktop pairing QR codes.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Provinode Scan discovers nearby Provinode Room receivers on your local network.</string>
 </dict>

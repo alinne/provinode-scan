@@ -11,6 +11,7 @@
 		0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */; };
 		35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */; };
 		542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */; };
+		5AE50999FB30AA8B2E4EEC6C /* CalibrationPatternView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */; };
 		5D1101A9C41F6C4F6787C790 /* ULID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B91C4745E8E1891EB036960 /* ULID.swift */; };
 		5E176F93D3351B1DC3F53EC7 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 76E8D74391C69E1A578AEE5D /* ProvinodeRoomContracts */; };
 		6088492A86C25DA3EA0533FD /* TrustStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDF49790D658CA8FC64AFEB /* TrustStore.swift */; };
@@ -24,6 +25,7 @@
 		BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */; };
 		CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */; };
 		D00F1900539F37B37DD704CE /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94414950604717D1A400ED1 /* PairingService.swift */; };
+		EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */; };
 		F14F07128D4F82DDF8BDE3D2 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
 		FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */; };
 		FEC839608187B777AA3D0704 /* StructuredLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E46731DC242956565BF1920D /* StructuredLog.swift */; };
@@ -52,10 +54,12 @@
 		81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionMetrics.swift; sourceTree = "<group>"; };
 		8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSecureChannelCrypto.swift; sourceTree = "<group>"; };
 		8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilityPolicy.swift; sourceTree = "<group>"; };
+		9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerView.swift; sourceTree = "<group>"; };
 		994E4C5F366D2F32D8DACB20 /* ProvinodeRoomContracts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ProvinodeRoomContracts; path = "../provinode-room-contracts/swift/ProvinodeRoomContracts"; sourceTree = SOURCE_ROOT; };
 		9CDF49790D658CA8FC64AFEB /* TrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustStore.swift; sourceTree = "<group>"; };
 		A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuicTransportClient.swift; sourceTree = "<group>"; };
 		B30539B50B6578189BF0B507 /* ProvinodeScanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvinodeScanApp.swift; sourceTree = "<group>"; };
+		BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationPatternView.swift; sourceTree = "<group>"; };
 		C94414950604717D1A400ED1 /* PairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingService.swift; sourceTree = "<group>"; };
 		DA72F134C0E162BDB9CFFB9C /* ScanIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIdentityStore.swift; sourceTree = "<group>"; };
 		DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanDiscoveryService.swift; sourceTree = "<group>"; };
@@ -146,8 +150,10 @@
 		8F9B667F98A9A10C3E4891CA /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */,
 				491E01F2795C326330EBF354 /* CaptureViewModel.swift */,
 				703680052CF0712179BDB312 /* ContentView.swift */,
+				9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -286,6 +292,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5AE50999FB30AA8B2E4EEC6C /* CalibrationPatternView.swift in Sources */,
 				6E555F7617DF0621A3306249 /* CaptureViewModel.swift in Sources */,
 				7676B85E5BD51157B1D9FDC3 /* ContentView.swift in Sources */,
 				FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */,
@@ -293,6 +300,7 @@
 				542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */,
 				D00F1900539F37B37DD704CE /* PairingService.swift in Sources */,
 				0A52EA16E3431E5520B342E3 /* ProvinodeScanApp.swift in Sources */,
+				EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */,
 				35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */,
 				0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */,
 				6A8E739B6CF0E2093E4D20D9 /* ScanIdentityStore.swift in Sources */,
