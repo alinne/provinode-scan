@@ -24,23 +24,11 @@ actor QuicTransportClient {
         port: Int,
         pinnedFingerprintSha256: String?,
         sessionId: String,
-        scanDeviceId: String,
-        scanCertFingerprintSha256: String
+        scanIdentity: ScanIdentityMaterial
     ) async throws {
         let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
         sec_protocol_options_set_verify_block(quicOptions.securityProtocolOptions, { _, secTrust, complete in
             let trustRef = sec_trust_copy_ref(secTrust).takeRetainedValue()
-
-            var error: CFError?
-            guard SecTrustEvaluateWithError(trustRef, &error) else {
-                complete(false)
-                return
-            }
-
-            guard let pinnedFingerprintSha256 else {
-                complete(true)
-                return
-            }
 
             guard let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate],
                   let leaf = chain.first
@@ -51,7 +39,13 @@ actor QuicTransportClient {
 
             let certificateData = SecCertificateCopyData(leaf) as Data
             let digest = SHA256.hash(data: certificateData).map { String(format: "%02x", $0) }.joined()
-            complete(digest.caseInsensitiveCompare(pinnedFingerprintSha256) == .orderedSame)
+            if let pinnedFingerprintSha256 {
+                complete(digest.caseInsensitiveCompare(pinnedFingerprintSha256) == .orderedSame)
+                return
+            }
+
+            var error: CFError?
+            complete(SecTrustEvaluateWithError(trustRef, &error))
         }, DispatchQueue.global(qos: .userInitiated))
 
         let parameters = NWParameters(quic: quicOptions)
@@ -72,8 +66,7 @@ actor QuicTransportClient {
         try await performSecureHandshake(
             connection: connection,
             sessionId: sessionId,
-            scanDeviceId: scanDeviceId,
-            scanCertFingerprintSha256: scanCertFingerprintSha256)
+            scanIdentity: scanIdentity)
 
         let resumeCheckpoint = ResumeCheckpoint(
             session_id: sessionId,
@@ -146,18 +139,33 @@ actor QuicTransportClient {
     private func performSecureHandshake(
         connection: NWConnection,
         sessionId: String,
-        scanDeviceId: String,
-        scanCertFingerprintSha256: String
+        scanIdentity: ScanIdentityMaterial
     ) async throws {
         let keyPair = EngineSecureChannelCrypto.createEphemeralKeyPair()
+        let helloNonce = ULID.generate()
+        let createdAtUtc = ISO8601DateFormatter.fractional.string(from: .now)
+        let signingPayload = Self.buildSecureHelloSigningPayload(
+            protocolId: RoomContractVersions.secureChannelProtocol,
+            sessionId: sessionId,
+            scanDeviceId: scanIdentity.deviceId,
+            scanCertFingerprintSha256: scanIdentity.certFingerprintSha256,
+            helloNonce: helloNonce,
+            clientEphemeralPublicKeyB64: keyPair.publicKeyX963.base64EncodedString(),
+            scanSigningPublicKeyB64: scanIdentity.signingPublicKeyB64)
+        let signature = try EngineSecureChannelCrypto.signSecureHello(
+            privateKeyRawB64: scanIdentity.signingPrivateKeyRawB64,
+            payload: signingPayload)
+
         let hello = SecureChannelHello(
             protocol: RoomContractVersions.secureChannelProtocol,
             session_id: sessionId,
-            scan_device_id: scanDeviceId,
-            scan_cert_fingerprint_sha256: scanCertFingerprintSha256,
-            hello_nonce: ULID.generate(),
+            scan_device_id: scanIdentity.deviceId,
+            scan_cert_fingerprint_sha256: scanIdentity.certFingerprintSha256,
+            hello_nonce: helloNonce,
             client_ephemeral_public_key_b64: keyPair.publicKeyX963.base64EncodedString(),
-            created_at_utc: ISO8601DateFormatter.fractional.string(from: .now))
+            created_at_utc: createdAtUtc,
+            scan_signing_public_key_b64: scanIdentity.signingPublicKeyB64,
+            hello_signature_b64: signature.base64EncodedString())
 
         let helloPayload = try JSONEncoder().encode(hello)
         try sendFrame(channel: 0x01, payload: helloPayload)
@@ -185,6 +193,27 @@ actor QuicTransportClient {
         secureSession = keys
         outboundCounter = 0
         inboundCounter = -1
+    }
+
+    private static func buildSecureHelloSigningPayload(
+        protocolId: String,
+        sessionId: String,
+        scanDeviceId: String,
+        scanCertFingerprintSha256: String,
+        helloNonce: String,
+        clientEphemeralPublicKeyB64: String,
+        scanSigningPublicKeyB64: String
+    ) -> Data {
+        let canonical = [
+            protocolId,
+            sessionId,
+            scanDeviceId,
+            scanCertFingerprintSha256.lowercased(),
+            helloNonce,
+            clientEphemeralPublicKeyB64,
+            scanSigningPublicKeyB64
+        ].joined(separator: "\n")
+        return Data(canonical.utf8)
     }
 
     private func sendFrame(channel: UInt8, payload: Data) throws {

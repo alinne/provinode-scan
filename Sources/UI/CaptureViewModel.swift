@@ -20,8 +20,8 @@ final class CaptureViewModel: ObservableObject {
     private let discovery = LanDiscoveryService()
     private let trustStore: TrustStore
     private let pairingService: PairingService
+    private let scanIdentity: ScanIdentityMaterial
     private let transport = QuicTransportClient()
-    private let deviceId = ULID.generate()
 
     private var pipeline: RoomCapturePipeline?
 
@@ -30,8 +30,10 @@ final class CaptureViewModel: ObservableObject {
             let trustStore = try TrustStore()
             self.trustStore = trustStore
             self.pairingService = PairingService(trustStore: trustStore)
+            let identityStore = try ScanIdentityStore()
+            self.scanIdentity = identityStore.material()
         } catch {
-            fatalError("Unable to initialize trust store: \(error.localizedDescription)")
+            fatalError("Unable to initialize scan app stores: \(error.localizedDescription)")
         }
     }
 
@@ -71,9 +73,9 @@ final class CaptureViewModel: ObservableObject {
                 endpoint: endpoint,
                 pairingNonce: pairingNonce,
                 pairingCode: pairingCode,
-                scanDeviceId: deviceId,
+                scanDeviceId: scanIdentity.deviceId,
                 scanDisplayName: UIDevice.current.name,
-                scanCertFingerprintSha256: Sha256.hex(of: deviceId),
+                scanCertFingerprintSha256: scanIdentity.certFingerprintSha256,
                 desktopCertFingerprintSha256: endpoint.pairingCertFingerprintSha256 ?? "")
             status = "Paired with \(trust.peer_display_name)"
         } catch {
@@ -89,7 +91,7 @@ final class CaptureViewModel: ObservableObject {
         do {
             recorder = try SessionRecorder(
                 sessionId: sessionId,
-                sourceDeviceId: deviceId,
+                sourceDeviceId: scanIdentity.deviceId,
                 producerVersion: "0.1.0")
         } catch {
             status = "Recorder init failed: \(error.localizedDescription)"
@@ -105,8 +107,7 @@ final class CaptureViewModel: ObservableObject {
                     port: endpoint.port,
                     pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
                     sessionId: sessionId,
-                    scanDeviceId: deviceId,
-                    scanCertFingerprintSha256: Sha256.hex(of: deviceId))
+                    scanIdentity: scanIdentity)
                 status = "Secure QUIC connected"
             } catch {
                 status = "QUIC connect failed: \(error.localizedDescription)"
@@ -117,7 +118,7 @@ final class CaptureViewModel: ObservableObject {
 
         let capturePipeline = RoomCapturePipeline(
             sessionId: sessionId,
-            sourceDeviceId: deviceId,
+            sourceDeviceId: scanIdentity.deviceId,
             recorder: recorder,
             transport: resolvedStreamingEndpoint() == nil ? nil : transport)
         self.pipeline = capturePipeline

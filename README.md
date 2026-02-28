@@ -4,6 +4,7 @@ Native iOS app for Provinode room scanning (M1):
 - LiDAR-gated ARKit capture
 - secure LAN pairing + QUIC streaming
 - local-first `RoomCaptureSession` recording/export
+- persistent scanner identity key for signed secure-channel hello proof
 
 ## Requirements
 - iPhone Pro with LiDAR (`iPhone 12 Pro` or newer Pro line)

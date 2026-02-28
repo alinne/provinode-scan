@@ -73,6 +73,19 @@ enum EngineSecureChannelCrypto {
         return try AES.GCM.open(sealed, using: keys.encryptionKey)
     }
 
+    static func signSecureHello(privateKeyRawB64: String, payload: Data) throws -> Data {
+        guard let keyData = Data(base64Encoded: privateKeyRawB64) else {
+            throw NSError(
+                domain: "EngineSecureChannelCrypto",
+                code: 3002,
+                userInfo: [NSLocalizedDescriptionKey: "Signing key data was invalid base64"])
+        }
+
+        let privateKey = try P256.Signing.PrivateKey(rawRepresentation: keyData)
+        let signature = try privateKey.signature(for: payload)
+        return signature.derRepresentation
+    }
+
     private static func makeNonce(prefix: Data, counter: Int64) throws -> AES.GCM.Nonce {
         guard prefix.count == 8, counter >= 0, counter <= Int64(UInt32.max) else {
             throw NSError(domain: "EngineSecureChannelCrypto", code: 3001, userInfo: [NSLocalizedDescriptionKey: "Invalid nonce input"])
