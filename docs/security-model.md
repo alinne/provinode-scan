@@ -5,6 +5,7 @@
 - Pairing request uses HTTPS with desktop cert fingerprint pinning from mDNS metadata.
 - Pairing lockout is enforced by desktop after repeated invalid codes.
 - Scanner identity is persisted locally as a long-lived signing key.
+- Scanner client mTLS credential payload is encrypted at rest (AES-GCM) before local persistence.
 - Trust records are persisted locally with paired desktop device ID + desktop certificate fingerprint hash for live-stream pinning.
 - Pairing response bootstraps a scanner client mTLS credential that is persisted locally for QUIC client authentication.
 - Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint server verification and scanner client certificate presentation.
