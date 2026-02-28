@@ -10,9 +10,22 @@ With automatic QR payload import on launch:
 ./scripts/run-simulator.sh --qr-payload-path /absolute/path/to/pairing_qr_payload.json
 ```
 
+Unattended simulator run (pair + capture + stop):
+```bash
+./scripts/run-simulator.sh \
+  --qr-payload-path /absolute/path/to/pairing_qr_payload.json \
+  --auto-pair \
+  --auto-capture-seconds 10 \
+  --session-id simscan-demo-001
+```
+
 The simulator app accepts bootstrap env vars:
 - `PROVINODE_SCAN_QR_PAYLOAD_PATH` (path to QR payload JSON file)
 - `PROVINODE_SCAN_QR_PAYLOAD_JSON` (raw QR payload JSON string)
+- `PROVINODE_SCAN_AUTOPAIR` (`1|true`) auto-calls pair on launch
+- `PROVINODE_SCAN_AUTO_CAPTURE_SECONDS` (number) auto-capture duration before stop
+- `PROVINODE_SCAN_AUTO_EXPORT` (`1|true`) auto-export after auto-stop
+- `PROVINODE_SCAN_SESSION_ID` fixed session id override for auto-capture
 
 1. Build and install `provinode-scan` on iPhone Pro (LiDAR-capable).
 2. Start `provinode-room` AppHost on the same LAN.

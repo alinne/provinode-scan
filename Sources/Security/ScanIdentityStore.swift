@@ -139,7 +139,8 @@ final class ScanIdentityStore {
         }
 
         let privateKey = try P256.Signing.PrivateKey(rawRepresentation: privateKeyBytes)
-        let publicKey = privateKey.publicKey.rawRepresentation
+        // Engine secure-hello verification expects uncompressed ANSI X9.63 key bytes (0x04 || X || Y).
+        let publicKey = privateKey.publicKey.x963Representation
         return ScanIdentityMaterial(
             deviceId: stored.device_id,
             certFingerprintSha256: Sha256.hex(of: publicKey),

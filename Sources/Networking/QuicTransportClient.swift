@@ -31,7 +31,8 @@ actor QuicTransportClient {
         pinnedFingerprintSha256: String?,
         sessionId: String,
         scanIdentity: ScanIdentityMaterial,
-        scanClientMtlsIdentity: ScanClientTlsIdentityMaterial?
+        scanClientMtlsIdentity: ScanClientTlsIdentityMaterial?,
+        requireEngineSecureChannel: Bool = true
     ) async throws {
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -43,7 +44,8 @@ actor QuicTransportClient {
             pinnedFingerprintSha256: pinnedFingerprintSha256,
             sessionId: sessionId,
             scanIdentity: scanIdentity,
-            scanClientMtlsIdentity: scanClientMtlsIdentity)
+            scanClientMtlsIdentity: scanClientMtlsIdentity,
+            requireEngineSecureChannel: requireEngineSecureChannel)
         connectionPlan = plan
         activeSessionId = sessionId
 
@@ -81,7 +83,8 @@ actor QuicTransportClient {
         frame.append(payload)
 
         bufferSampleFrame(sampleSeq: envelope.sample_seq, frame: frame)
-        guard secureSession != nil else {
+        let requiresSecureChannel = connectionPlan?.requireEngineSecureChannel ?? true
+        if requiresSecureChannel && secureSession == nil {
             return
         }
 
@@ -89,10 +92,15 @@ actor QuicTransportClient {
     }
 
     private func sendPayload(channel: UInt8, payload: Data) throws {
+        let requiresSecureChannel = connectionPlan?.requireEngineSecureChannel ?? true
+        if !requiresSecureChannel {
+            try sendFrame(channel: channel, payload: payload)
+            return
+        }
+
         guard secureSession != nil else {
             throw NSError(domain: "QuicTransportClient", code: 2005, userInfo: [NSLocalizedDescriptionKey: "Secure session is not established"])
         }
-
         try sendSecurePayload(payloadChannel: Int(channel), payload: payload)
     }
 
@@ -136,6 +144,16 @@ actor QuicTransportClient {
             privateKeyRawB64: scanIdentity.signingPrivateKeyRawB64,
             payload: signingPayload)
 
+        let signingPublicKeyLength = Data(base64Encoded: scanIdentity.signingPublicKeyB64)?.count ?? -1
+        StructuredLog.emit(
+            event: "quic_secure_hello_sending",
+            fields: [
+                "session_id": sessionId,
+                "client_ephemeral_len_bytes": String(keyPair.publicKeyX963.count),
+                "scan_signing_public_key_len_bytes": String(signingPublicKeyLength),
+                "hello_signature_len_bytes": String(signature.count)
+            ])
+
         let hello = SecureChannelHello(
             protocol: RoomContractVersions.secureChannelProtocol,
             session_id: sessionId,
@@ -165,6 +183,13 @@ actor QuicTransportClient {
 
         let salt = Data(base64Encoded: ack.ack_salt_b64) ?? Data()
         let peerPublicKey = Data(base64Encoded: ack.server_ephemeral_public_key_b64) ?? Data()
+        StructuredLog.emit(
+            event: "quic_secure_hello_ack",
+            fields: [
+                "session_id": sessionId,
+                "ack_salt_len_bytes": String(salt.count),
+                "server_ephemeral_len_bytes": String(peerPublicKey.count)
+            ])
         let keys = try EngineSecureChannelCrypto.deriveSessionKeys(
             localKeyPair: keyPair,
             peerPublicKeyX963: peerPublicKey,
@@ -479,10 +504,17 @@ actor QuicTransportClient {
         self.activeSessionId = plan.sessionId
         self.receiveBuffer = Data()
         self.inboundCounter = -1
-        try await performSecureHandshake(
-            connection: connection,
-            sessionId: plan.sessionId,
-            scanIdentity: plan.scanIdentity)
+        if plan.requireEngineSecureChannel {
+            try await performSecureHandshake(
+                connection: connection,
+                sessionId: plan.sessionId,
+                scanIdentity: plan.scanIdentity)
+        } else {
+            secureSession = nil
+            outboundCounter = 0
+        }
+
+        startReceiveLoop(connection: connection)
 
         let resumeCheckpoint = ResumeCheckpoint(
             session_id: plan.sessionId,
@@ -490,8 +522,6 @@ actor QuicTransportClient {
             captured_at_utc: ISO8601DateFormatter.fractional.string(from: .now),
             stream_id: isReconnect ? "scan-reconnect-\(ULID.generate())" : "scan-\(ULID.generate())")
         try sendControl(resumeCheckpoint)
-
-        startReceiveLoop(connection: connection)
     }
 
     private func handleConnectionFailure(_ error: Error) async {
@@ -579,6 +609,7 @@ private struct ConnectionPlan: Sendable {
     let sessionId: String
     let scanIdentity: ScanIdentityMaterial
     let scanClientMtlsIdentity: ScanClientTlsIdentityMaterial?
+    let requireEngineSecureChannel: Bool
 }
 
 private final class ConnectionStartContinuationBox: @unchecked Sendable {

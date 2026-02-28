@@ -8,7 +8,7 @@ enum EngineSecureChannelCrypto {
 
     struct EphemeralKeyPair {
         let privateKey: P256.KeyAgreement.PrivateKey
-        var publicKeyX963: Data { privateKey.publicKey.rawRepresentation }
+        var publicKeyX963: Data { privateKey.publicKey.x963Representation }
     }
 
     struct SessionKeys {
@@ -36,7 +36,7 @@ enum EngineSecureChannelCrypto {
         peerPublicKeyX963: Data,
         salt: Data
     ) throws -> SessionKeys {
-        let peerPublicKey = try P256.KeyAgreement.PublicKey(rawRepresentation: peerPublicKeyX963)
+        let peerPublicKey = try P256.KeyAgreement.PublicKey(x963Representation: peerPublicKeyX963)
         let sharedSecret = try localKeyPair.privateKey.sharedSecretFromKeyAgreement(with: peerPublicKey)
         let derived = sharedSecret.hkdfDerivedSymmetricKey(
             using: SHA256.self,
@@ -83,7 +83,8 @@ enum EngineSecureChannelCrypto {
 
         let privateKey = try P256.Signing.PrivateKey(rawRepresentation: keyData)
         let signature = try privateKey.signature(for: payload)
-        return signature.derRepresentation
+        // .NET verifier uses the default ECDSA representation (P1363 r||s).
+        return signature.rawRepresentation
     }
 
     private static func makeNonce(prefix: Data, counter: Int64) throws -> AES.GCM.Nonce {

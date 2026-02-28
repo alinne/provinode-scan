@@ -43,6 +43,15 @@ Optional QR bootstrap (imports payload automatically on launch):
 ./scripts/run-simulator.sh --qr-payload-path /absolute/path/to/pairing_qr_payload.json
 ```
 
+Autonomous simulator run (auto pair + auto capture + fixed session id):
+```bash
+./scripts/run-simulator.sh \
+  --qr-payload-path /absolute/path/to/pairing_qr_payload.json \
+  --auto-pair \
+  --auto-capture-seconds 10 \
+  --session-id simscan-demo-001
+```
+
 ## M1 data output
 Recorded sessions are stored in app support with this layout:
 - `session.manifest.json`

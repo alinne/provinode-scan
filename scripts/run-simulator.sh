@@ -8,6 +8,11 @@ DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-}"
 SIMULATOR_ID="${SIMULATOR_ID:-}"
 QR_PAYLOAD_PATH="${QR_PAYLOAD_PATH:-}"
 QR_PAYLOAD_JSON="${QR_PAYLOAD_JSON:-}"
+AUTO_PAIR="${AUTO_PAIR:-0}"
+AUTO_CAPTURE_SECONDS="${AUTO_CAPTURE_SECONDS:-}"
+AUTO_EXPORT="${AUTO_EXPORT:-0}"
+SESSION_ID_OVERRIDE="${SESSION_ID_OVERRIDE:-}"
+DISABLE_ENGINE_SECURE_CHANNEL="${DISABLE_ENGINE_SECURE_CHANNEL:-0}"
 
 usage() {
   cat <<EOF
@@ -19,6 +24,12 @@ Options:
   --qr-payload-json <json>   Auto-import pairing QR payload JSON string.
   --bundle-id <bundle-id>    Override app bundle id (default: com.provinode.scan).
   --derived-data <path>      Override Xcode derived data output path.
+  --auto-pair                Run pairing automatically on launch (simulator only).
+  --auto-capture-seconds <n> Auto-start capture and stop after N seconds.
+  --auto-export              Export captured session after auto-stop.
+  --session-id <id>          Override session id for auto-capture run.
+  --disable-engine-secure-channel
+                             Use plaintext sample/control channels over mTLS transport.
 EOF
 }
 
@@ -43,6 +54,26 @@ while [[ $# -gt 0 ]]; do
     --derived-data)
       DERIVED_DATA_PATH="${2:-}"
       shift 2
+      ;;
+    --auto-pair)
+      AUTO_PAIR=1
+      shift 1
+      ;;
+    --auto-capture-seconds)
+      AUTO_CAPTURE_SECONDS="${2:-}"
+      shift 2
+      ;;
+    --auto-export)
+      AUTO_EXPORT=1
+      shift 1
+      ;;
+    --session-id)
+      SESSION_ID_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --disable-engine-secure-channel)
+      DISABLE_ENGINE_SECURE_CHANNEL=1
+      shift 1
       ;;
     --help|-h)
       usage
@@ -71,6 +102,9 @@ fi
 if [[ -n "$QR_PAYLOAD_PATH" ]]; then
   QR_PAYLOAD_PATH="$(cd "$(dirname "$QR_PAYLOAD_PATH")" && pwd)/$(basename "$QR_PAYLOAD_PATH")"
   [[ -f "$QR_PAYLOAD_PATH" ]] || { echo "QR payload file not found: $QR_PAYLOAD_PATH" >&2; exit 1; }
+  if [[ -z "$QR_PAYLOAD_JSON" ]]; then
+    QR_PAYLOAD_JSON="$(cat "$QR_PAYLOAD_PATH")"
+  fi
 fi
 
 BUILD_ARGS=(
@@ -107,17 +141,32 @@ fi
 echo "Installing app ..."
 xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
 
+# Ensure launch environment variables are applied to a fresh app process.
+xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+
 echo "Launching app ..."
-if [[ -n "$QR_PAYLOAD_PATH" && -n "$QR_PAYLOAD_JSON" ]]; then
-  SIMCTL_CHILD_PROVINODE_SCAN_QR_PAYLOAD_PATH="$QR_PAYLOAD_PATH" \
-  SIMCTL_CHILD_PROVINODE_SCAN_QR_PAYLOAD_JSON="$QR_PAYLOAD_JSON" \
-  xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null
-elif [[ -n "$QR_PAYLOAD_PATH" ]]; then
-  SIMCTL_CHILD_PROVINODE_SCAN_QR_PAYLOAD_PATH="$QR_PAYLOAD_PATH" \
-  xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null
-elif [[ -n "$QR_PAYLOAD_JSON" ]]; then
-  SIMCTL_CHILD_PROVINODE_SCAN_QR_PAYLOAD_JSON="$QR_PAYLOAD_JSON" \
-  xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null
+launch_env=()
+if [[ -n "$QR_PAYLOAD_JSON" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_QR_PAYLOAD_JSON=$QR_PAYLOAD_JSON")
+fi
+if [[ "$AUTO_PAIR" == "1" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_AUTOPAIR=1")
+fi
+if [[ -n "$AUTO_CAPTURE_SECONDS" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_AUTO_CAPTURE_SECONDS=$AUTO_CAPTURE_SECONDS")
+fi
+if [[ "$AUTO_EXPORT" == "1" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_AUTO_EXPORT=1")
+fi
+if [[ -n "$SESSION_ID_OVERRIDE" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_SESSION_ID=$SESSION_ID_OVERRIDE")
+fi
+if [[ "$DISABLE_ENGINE_SECURE_CHANNEL" == "1" ]]; then
+  launch_env+=("SIMCTL_CHILD_PROVINODE_SCAN_DISABLE_ENGINE_SECURE_CHANNEL=1")
+fi
+
+if [[ ${#launch_env[@]} -gt 0 ]]; then
+  env "${launch_env[@]}" xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null
 else
   xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null
 fi

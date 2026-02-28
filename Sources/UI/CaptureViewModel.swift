@@ -27,8 +27,14 @@ final class CaptureViewModel: ObservableObject {
     private let pairingService: PairingService
     private let scanIdentity: ScanIdentityMaterial
     private let transport = QuicTransportClient()
+    private let simulatorAutoPairEnabled: Bool
+    private let simulatorAutoCaptureDurationSeconds: Double?
+    private let simulatorAutoExportEnabled: Bool
+    private let simulatorSessionIdOverride: String?
+    private let simulatorDisableEngineSecureChannel: Bool
 
     private var pipeline: RoomCapturePipeline?
+    private var simulatorAutomationStarted = false
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         do {
@@ -42,7 +48,38 @@ final class CaptureViewModel: ObservableObject {
             fatalError("Unable to initialize scan app stores: \(error.localizedDescription)")
         }
 
+        #if targetEnvironment(simulator)
+        simulatorAutoPairEnabled = Self.isTruthy(environment["PROVINODE_SCAN_AUTOPAIR"])
+        simulatorAutoExportEnabled = Self.isTruthy(environment["PROVINODE_SCAN_AUTO_EXPORT"])
+        if let rawSeconds = environment["PROVINODE_SCAN_AUTO_CAPTURE_SECONDS"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           let seconds = Double(rawSeconds),
+           seconds > 0
+        {
+            simulatorAutoCaptureDurationSeconds = seconds
+        } else {
+            simulatorAutoCaptureDurationSeconds = nil
+        }
+
+        if let rawSessionId = environment["PROVINODE_SCAN_SESSION_ID"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawSessionId.isEmpty
+        {
+            simulatorSessionIdOverride = rawSessionId
+        } else {
+            simulatorSessionIdOverride = nil
+        }
+        simulatorDisableEngineSecureChannel = Self.isTruthy(environment["PROVINODE_SCAN_DISABLE_ENGINE_SECURE_CHANNEL"])
+        #else
+        simulatorAutoPairEnabled = false
+        simulatorAutoExportEnabled = false
+        simulatorAutoCaptureDurationSeconds = nil
+        simulatorSessionIdOverride = nil
+        simulatorDisableEngineSecureChannel = false
+        #endif
+
         applySimulatorBootstrapIfPresent(environment: environment)
+        triggerSimulatorAutomationIfNeeded()
     }
 
     func startDiscovery() async {
@@ -52,6 +89,9 @@ final class CaptureViewModel: ObservableObject {
             if selectedEndpoint == nil {
                 selectedEndpoint = discoveredEndpoints.first
             }
+
+            triggerSimulatorAutomationIfNeeded()
+
             try? await Task.sleep(for: .seconds(1))
         }
     }
@@ -181,7 +221,7 @@ final class CaptureViewModel: ObservableObject {
     func startCapture() async {
         guard !isCapturing else { return }
 
-        let sessionId = ULID.generate()
+        let sessionId = simulatorSessionIdOverride ?? ULID.generate()
         var activeTransport: QuicTransportClient?
         var sessionMetadata: [String: String] = [:]
         let recorder: SessionRecorder
@@ -209,7 +249,8 @@ final class CaptureViewModel: ObservableObject {
                         pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
                         sessionId: sessionId,
                         scanIdentity: scanIdentity,
-                        scanClientMtlsIdentity: scanClientMtlsIdentity)
+                        scanClientMtlsIdentity: scanClientMtlsIdentity,
+                        requireEngineSecureChannel: !simulatorDisableEngineSecureChannel)
                     status = "Secure QUIC connected"
                     activeTransport = transport
                 } catch {
@@ -451,6 +492,48 @@ final class CaptureViewModel: ObservableObject {
         return decoded.count == 32
     }
 
+    private func runSimulatorAutomationFlow() async {
+        #if targetEnvironment(simulator)
+        guard simulatorAutoPairEnabled else { return }
+
+        var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProvinodeScanSimulatorAutomation")
+        defer {
+            if backgroundTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskId)
+            }
+        }
+
+        await pair()
+        guard let captureSeconds = simulatorAutoCaptureDurationSeconds, captureSeconds > 0 else {
+            return
+        }
+
+        await startCapture()
+        guard isCapturing else { return }
+
+        let delayNs = UInt64(max(1, captureSeconds) * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: delayNs)
+
+        if isCapturing {
+            await stopCapture()
+            if simulatorAutoExportEnabled {
+                exportLastSession()
+            }
+        }
+        #endif
+    }
+
+    private func triggerSimulatorAutomationIfNeeded() {
+        #if targetEnvironment(simulator)
+        guard simulatorAutoPairEnabled, !simulatorAutomationStarted else { return }
+        simulatorAutomationStarted = true
+        Task { [weak self] in
+            await self?.runSimulatorAutomationFlow()
+        }
+        #endif
+    }
+
     private func applySimulatorBootstrapIfPresent(environment: [String: String]) {
         #if targetEnvironment(simulator)
         if let payloadPath = environment["PROVINODE_SCAN_QR_PAYLOAD_PATH"]?
@@ -464,7 +547,6 @@ final class CaptureViewModel: ObservableObject {
                 return
             } catch {
                 status = "Simulator QR payload file failed to load: \(error.localizedDescription)"
-                return
             }
         }
 
@@ -476,5 +558,22 @@ final class CaptureViewModel: ObservableObject {
             applyPairingQrPayload(payloadJson)
         }
         #endif
+    }
+
+    private static func isTruthy(_ value: String?) -> Bool {
+        guard let trimmed = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+            !trimmed.isEmpty
+        else {
+            return false
+        }
+
+        switch trimmed {
+        case "1", "true", "yes", "on":
+            return true
+        default:
+            return false
+        }
     }
 }
