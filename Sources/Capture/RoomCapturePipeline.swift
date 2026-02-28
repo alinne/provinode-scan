@@ -154,7 +154,14 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
             metrics.emittedSamples += 1
         } catch {
             metrics.droppedSamples += 1
-            NSLog("Failed to emit sample \(sampleSeq): \(error.localizedDescription)")
+            StructuredLog.emit(
+                event: "capture_emit_sample_failed",
+                level: "error",
+                fields: [
+                    "sample_seq": String(sampleSeq),
+                    "session_id": sessionId,
+                    "error": error.localizedDescription
+                ])
         }
     }
 

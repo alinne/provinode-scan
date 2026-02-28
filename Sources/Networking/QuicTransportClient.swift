@@ -206,7 +206,10 @@ actor QuicTransportClient {
 
         connection.send(content: frame, completion: .contentProcessed { error in
             if let error {
-                NSLog("QUIC send failed: \(error.localizedDescription)")
+                StructuredLog.emit(
+                    event: "quic_send_failed",
+                    level: "error",
+                    fields: ["error": error.localizedDescription])
                 Task { await self.handleConnectionFailure(error) }
             }
         })
@@ -279,7 +282,10 @@ actor QuicTransportClient {
                 receiveBuffer.append(chunk)
                 try await processBufferedFrames()
             } catch {
-                NSLog("QUIC receive failed: \(error.localizedDescription)")
+                StructuredLog.emit(
+                    event: "quic_receive_failed",
+                    level: "error",
+                    fields: ["error": error.localizedDescription])
                 await handleConnectionFailure(error)
                 break
             }
@@ -509,7 +515,13 @@ actor QuicTransportClient {
                 try await establishConnection(plan: plan, isReconnect: true)
                 return
             } catch {
-                NSLog("QUIC reconnect attempt \(attempt) failed: \(error.localizedDescription)")
+                StructuredLog.emit(
+                    event: "quic_reconnect_attempt_failed",
+                    level: "error",
+                    fields: [
+                        "attempt": String(attempt),
+                        "error": error.localizedDescription
+                    ])
             }
         }
     }

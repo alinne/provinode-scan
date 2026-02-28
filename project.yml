@@ -17,6 +17,10 @@ targets:
       - Sources
     info:
       path: Config/Info.plist
+      properties:
+        NSBonjourServices:
+          - _provinode-room._tcp
+        NSLocalNetworkUsageDescription: Provinode Scan discovers nearby Provinode Room receivers on your local network.
     settings:
       base:
         PRODUCT_NAME: ProvinodeScan

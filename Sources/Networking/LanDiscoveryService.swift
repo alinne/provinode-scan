@@ -85,7 +85,10 @@ final class LanDiscoveryService: NSObject, ObservableObject {
         _ browser: NetServiceBrowser,
         didNotSearch errorDict: [String: NSNumber]
     ) {
-        NSLog("LAN browse failed: \(errorDict)")
+        StructuredLog.emit(
+            event: "lan_browse_failed",
+            level: "error",
+            fields: ["error": String(describing: errorDict)])
     }
 }
 
@@ -126,6 +129,9 @@ final class LanDiscoveryService: NSObject, ObservableObject {
         let serviceKey = key(for: sender)
         resolvedEndpointsByKey.removeValue(forKey: serviceKey)
         refreshPublishedEndpoints()
-        NSLog("LAN service resolve failed: \(errorDict)")
+        StructuredLog.emit(
+            event: "lan_service_resolve_failed",
+            level: "error",
+            fields: ["error": String(describing: errorDict)])
     }
 }
