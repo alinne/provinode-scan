@@ -11,6 +11,7 @@ struct PairingEndpoint: Codable, Hashable {
 enum PairingError: Error {
     case invalidCode
     case expired
+    case lockedOut
     case serverRejected
 }
 
@@ -63,6 +64,8 @@ actor PairingService {
             throw PairingError.invalidCode
         case 410:
             throw PairingError.expired
+        case 429:
+            throw PairingError.lockedOut
         default:
             throw PairingError.serverRejected
         }

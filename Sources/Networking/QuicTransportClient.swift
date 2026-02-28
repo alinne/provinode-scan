@@ -9,8 +9,24 @@ actor QuicTransportClient {
     private var receiveTask: Task<Void, Never>?
     private var secureSession: EngineSecureChannelCrypto.SessionKeys?
     private var outboundCounter: Int64 = 0
+    private var inboundCounter: Int64 = -1
+    private var receiveBuffer = Data()
+    private var lastAckedSampleSeq: Int64 = -1
+    private var activeSessionId = ""
+    private var backpressureHandler: (@Sendable (BackpressureHint) async -> Void)?
 
-    func connect(host: String, port: Int, pinnedFingerprintSha256: String?, sessionId: String) async throws {
+    func setBackpressureHandler(_ handler: (@Sendable (BackpressureHint) async -> Void)?) {
+        backpressureHandler = handler
+    }
+
+    func connect(
+        host: String,
+        port: Int,
+        pinnedFingerprintSha256: String?,
+        sessionId: String,
+        scanDeviceId: String,
+        scanCertFingerprintSha256: String
+    ) async throws {
         let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
         sec_protocol_options_set_verify_block(quicOptions.securityProtocolOptions, { _, secTrust, complete in
             let trustRef = sec_trust_copy_ref(secTrust).takeRetainedValue()
@@ -47,11 +63,25 @@ actor QuicTransportClient {
 
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
         let connection = NWConnection(to: endpoint, using: parameters)
-
         try await waitUntilReadyAndStart(connection)
 
         self.connection = connection
-        try await performSecureHandshake(connection: connection, sessionId: sessionId)
+        self.activeSessionId = sessionId
+        self.receiveBuffer = Data()
+        self.inboundCounter = -1
+        try await performSecureHandshake(
+            connection: connection,
+            sessionId: sessionId,
+            scanDeviceId: scanDeviceId,
+            scanCertFingerprintSha256: scanCertFingerprintSha256)
+
+        let resumeCheckpoint = ResumeCheckpoint(
+            session_id: sessionId,
+            last_acked_sample_seq: lastAckedSampleSeq,
+            captured_at_utc: ISO8601DateFormatter.fractional.string(from: .now),
+            stream_id: "scan-\(ULID.generate())")
+        try sendControl(resumeCheckpoint)
+
         startReceiveLoop(connection: connection)
     }
 
@@ -62,6 +92,9 @@ actor QuicTransportClient {
         connection = nil
         secureSession = nil
         outboundCounter = 0
+        inboundCounter = -1
+        receiveBuffer = Data()
+        activeSessionId = ""
     }
 
     func sendControl<T: Encodable>(_ value: T) throws {
@@ -110,11 +143,18 @@ actor QuicTransportClient {
         try sendFrame(channel: 0x03, payload: encryptedPayload)
     }
 
-    private func performSecureHandshake(connection: NWConnection, sessionId: String) async throws {
+    private func performSecureHandshake(
+        connection: NWConnection,
+        sessionId: String,
+        scanDeviceId: String,
+        scanCertFingerprintSha256: String
+    ) async throws {
         let keyPair = EngineSecureChannelCrypto.createEphemeralKeyPair()
         let hello = SecureChannelHello(
             protocol: RoomContractVersions.secureChannelProtocol,
             session_id: sessionId,
+            scan_device_id: scanDeviceId,
+            scan_cert_fingerprint_sha256: scanCertFingerprintSha256,
             hello_nonce: ULID.generate(),
             client_ephemeral_public_key_b64: keyPair.publicKeyX963.base64EncodedString(),
             created_at_utc: ISO8601DateFormatter.fractional.string(from: .now))
@@ -131,6 +171,9 @@ actor QuicTransportClient {
         guard ack.protocol == RoomContractVersions.secureChannelProtocol else {
             throw NSError(domain: "QuicTransportClient", code: 2003, userInfo: [NSLocalizedDescriptionKey: "Secure handshake protocol mismatch"])
         }
+        guard ack.session_id == sessionId else {
+            throw NSError(domain: "QuicTransportClient", code: 2007, userInfo: [NSLocalizedDescriptionKey: "Secure handshake session mismatch"])
+        }
 
         let salt = Data(base64Encoded: ack.ack_salt_b64) ?? Data()
         let peerPublicKey = Data(base64Encoded: ack.server_ephemeral_public_key_b64) ?? Data()
@@ -141,6 +184,7 @@ actor QuicTransportClient {
 
         secureSession = keys
         outboundCounter = 0
+        inboundCounter = -1
     }
 
     private func sendFrame(channel: UInt8, payload: Data) throws {
@@ -208,7 +252,7 @@ actor QuicTransportClient {
                 }
 
                 guard let data, !data.isEmpty else {
-                    continuation.resume(throwing: NSError(domain: "QuicTransportClient", code: 2004, userInfo: [NSLocalizedDescriptionKey: "Connection closed during handshake"]))
+                    continuation.resume(throwing: NSError(domain: "QuicTransportClient", code: 2004, userInfo: [NSLocalizedDescriptionKey: "Connection closed"]))
                     return
                 }
 
@@ -218,17 +262,100 @@ actor QuicTransportClient {
     }
 
     private func startReceiveLoop(connection: NWConnection) {
-        receiveTask = Task.detached(priority: .utility) {
-            while !Task.isCancelled {
-                await withCheckedContinuation { continuation in
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { _, _, _, error in
-                        if let error {
-                            NSLog("QUIC receive failed: \(error.localizedDescription)")
-                        }
-                        continuation.resume()
-                    }
-                }
+        receiveTask?.cancel()
+        receiveTask = Task(priority: .utility) { [connection] in
+            await receiveLoop(connection: connection)
+        }
+    }
+
+    private func receiveLoop(connection: NWConnection) async {
+        while !Task.isCancelled {
+            do {
+                let chunk = try await readChunk(connection: connection)
+                receiveBuffer.append(chunk)
+                try await processBufferedFrames()
+            } catch {
+                NSLog("QUIC receive failed: \(error.localizedDescription)")
+                break
             }
+        }
+    }
+
+    private func processBufferedFrames() async throws {
+        while true {
+            guard receiveBuffer.count >= 5 else {
+                return
+            }
+
+            let channel = receiveBuffer[0]
+            let length = receiveBuffer.dropFirst().prefix(4).reduce(0) { ($0 << 8) | UInt32($1) }
+            let total = 5 + Int(length)
+            guard receiveBuffer.count >= total else {
+                return
+            }
+
+            let payload = receiveBuffer.subdata(in: 5..<total)
+            receiveBuffer.removeSubrange(0..<total)
+            try await handleInboundFrame(channel: channel, payload: payload)
+        }
+    }
+
+    private func handleInboundFrame(channel: UInt8, payload: Data) async throws {
+        if channel == 0x03 {
+            try await handleSecureEnvelope(payload: payload)
+            return
+        }
+
+        if channel == 0x01 {
+            try await handleControlPayload(payload)
+        }
+    }
+
+    private func handleSecureEnvelope(payload: Data) async throws {
+        guard let secureSession else {
+            return
+        }
+
+        let envelope = try JSONDecoder().decode(SecureCipherEnvelope.self, from: payload)
+        guard envelope.protocol == RoomContractVersions.secureChannelProtocol else {
+            return
+        }
+
+        guard envelope.counter > inboundCounter else {
+            return
+        }
+
+        guard let nonce = Data(base64Encoded: envelope.nonce_b64),
+              let ciphertext = Data(base64Encoded: envelope.ciphertext_b64),
+              let tag = Data(base64Encoded: envelope.tag_b64)
+        else {
+            return
+        }
+
+        let plaintext = try EngineSecureChannelCrypto.decrypt(
+            keys: secureSession,
+            nonce: nonce,
+            ciphertext: ciphertext,
+            tag: tag)
+        inboundCounter = envelope.counter
+
+        if envelope.payload_channel == 0x01 {
+            try await handleControlPayload(plaintext)
+        }
+    }
+
+    private func handleControlPayload(_ payload: Data) async throws {
+        if let checkpoint = try? JSONDecoder().decode(ResumeCheckpoint.self, from: payload),
+           checkpoint.session_id == activeSessionId
+        {
+            lastAckedSampleSeq = max(lastAckedSampleSeq, checkpoint.last_acked_sample_seq)
+            return
+        }
+
+        if let hint = try? JSONDecoder().decode(BackpressureHint.self, from: payload),
+           let backpressureHandler
+        {
+            await backpressureHandler(hint)
         }
     }
 }

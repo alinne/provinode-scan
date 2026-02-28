@@ -103,7 +103,9 @@ final class CaptureViewModel: ObservableObject {
                     host: endpoint.host,
                     port: endpoint.port,
                     pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
-                    sessionId: sessionId)
+                    sessionId: sessionId,
+                    scanDeviceId: deviceId,
+                    scanCertFingerprintSha256: Sha256.hex(of: deviceId))
                 status = "Secure QUIC connected"
             } catch {
                 status = "QUIC connect failed: \(error.localizedDescription)"
@@ -117,6 +119,11 @@ final class CaptureViewModel: ObservableObject {
             sourceDeviceId: deviceId,
             recorder: recorder,
             transport: resolvedStreamingEndpoint() == nil ? nil : transport)
+        await transport.setBackpressureHandler { [weak pipeline] hint in
+            await MainActor.run {
+                pipeline?.applyBackpressureHint(hint)
+            }
+        }
 
         do {
             try pipeline.start()
