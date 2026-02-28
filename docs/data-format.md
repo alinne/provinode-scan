@@ -15,3 +15,13 @@ Capture sample kinds:
 - `Heartbeat`
 
 Envelope fields include `session_id`, `sample_seq`, `capture_time_ns`, `clock_id`, and `hash_sha256`.
+
+Mesh payload (`MeshAnchorBatch`, `format=mesh_anchor_batch_v2`) stores per-anchor:
+- `identifier`
+- `transform` (4x4 column-major float array)
+- `vertices` (flattened xyz float array)
+- `face_indices` (triangle index list, flattened)
+
+Control payloads over encrypted channel:
+- `BackpressureHint` from desktop to scan
+- `ResumeCheckpoint` acknowledgements for reconnect/replay alignment

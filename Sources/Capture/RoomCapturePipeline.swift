@@ -96,7 +96,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         if frame.timestamp - lastMeshTimestamp >= meshIntervalSec,
            let meshPayload = meshPayload(from: frame.anchors) {
             lastMeshTimestamp = frame.timestamp
-            await emit(kind: .meshAnchorBatch, captureTimeNs: captureTimeNs, payload: meshPayload, metadata: ["format": "mesh_anchor_batch_v1"])
+            await emit(kind: .meshAnchorBatch, captureTimeNs: captureTimeNs, payload: meshPayload, metadata: ["format": "mesh_anchor_batch_v2"])
             metrics.meshCount += 1
         }
 
@@ -177,17 +177,65 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     }
 
     private func meshPayload(from anchors: [ARAnchor]) -> Data? {
-        let meshEntries = anchors.compactMap { anchor -> MeshAnchorMetadata? in
+        let meshEntries = anchors.compactMap { anchor -> MeshAnchorGeometryPayload? in
             guard let meshAnchor = anchor as? ARMeshAnchor else { return nil }
-            return MeshAnchorMetadata(
+            let vertices = extractMeshVertices(meshAnchor.geometry.vertices)
+            let faceIndices = extractFaceIndices(meshAnchor.geometry.faces)
+            guard !vertices.isEmpty, !faceIndices.isEmpty else {
+                return nil
+            }
+
+            return MeshAnchorGeometryPayload(
                 identifier: meshAnchor.identifier.uuidString,
                 transform: meshAnchor.transform.toArray(),
-                vertexCount: meshAnchor.geometry.vertices.count,
-                faceCount: meshAnchor.geometry.faces.count)
+                vertices: vertices,
+                faceIndices: faceIndices)
         }
 
         guard !meshEntries.isEmpty else { return nil }
         return try? JSONEncoder().encode(meshEntries)
+    }
+
+    private func extractMeshVertices(_ source: ARGeometrySource) -> [Float] {
+        var result: [Float] = []
+        result.reserveCapacity(source.count * 3)
+
+        let baseAddress = source.buffer.contents()
+        for index in 0..<source.count {
+            let pointer = baseAddress
+                .advanced(by: source.offset + source.stride * index)
+                .assumingMemoryBound(to: SIMD3<Float>.self)
+            let vertex = pointer.pointee
+            result.append(vertex.x)
+            result.append(vertex.y)
+            result.append(vertex.z)
+        }
+
+        return result
+    }
+
+    private func extractFaceIndices(_ element: ARGeometryElement) -> [UInt32] {
+        var result: [UInt32] = []
+        let totalIndices = element.count * element.indexCountPerPrimitive
+        result.reserveCapacity(totalIndices)
+
+        let baseAddress = element.buffer.contents()
+        for index in 0..<totalIndices {
+            let offset = index * element.bytesPerIndex
+            let pointer = baseAddress.advanced(by: offset)
+            switch element.bytesPerIndex {
+            case 1:
+                result.append(UInt32(pointer.assumingMemoryBound(to: UInt8.self).pointee))
+            case 2:
+                result.append(UInt32(pointer.assumingMemoryBound(to: UInt16.self).pointee))
+            case 4:
+                result.append(pointer.assumingMemoryBound(to: UInt32.self).pointee)
+            default:
+                continue
+            }
+        }
+
+        return result
     }
 }
 
@@ -217,11 +265,18 @@ private struct IntrinsicsPayload: Codable {
     let resolution: [Int]
 }
 
-private struct MeshAnchorMetadata: Codable {
+private struct MeshAnchorGeometryPayload: Codable {
     let identifier: String
     let transform: [Float]
-    let vertexCount: Int
-    let faceCount: Int
+    let vertices: [Float]
+    let faceIndices: [UInt32]
+
+    enum CodingKeys: String, CodingKey {
+        case identifier
+        case transform
+        case vertices
+        case faceIndices = "face_indices"
+    }
 }
 
 private extension simd_float4x4 {
