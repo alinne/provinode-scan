@@ -119,6 +119,12 @@ final class CaptureViewModel: ObservableObject {
                 status = "QR payload pairing endpoint is invalid"
                 return
             }
+            guard let pairingHost = pairingUrl.host,
+                  !pairingHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                status = "QR payload pairing endpoint is missing a host"
+                return
+            }
             guard pairingUrl.scheme?.lowercased() == "https" else {
                 status = "QR payload pairing endpoint must use https"
                 return
@@ -139,17 +145,23 @@ final class CaptureViewModel: ObservableObject {
                 status = "QR payload signature is missing or invalid"
                 return
             }
+            guard let quicHostPort = parseHostAndPort(payload.quic_endpoint) else {
+                status = "QR payload QUIC endpoint is invalid"
+                return
+            }
+            guard isValidPort(quicHostPort.port) else {
+                status = "QR payload QUIC endpoint port is invalid"
+                return
+            }
 
-            manualHost = pairingUrl.host ?? manualHost
+            manualHost = pairingHost
             manualPort = String(pairingUrl.port ?? 7448)
             manualPairingFingerprintSha256 = payload.desktop_cert_fingerprint_sha256.lowercased()
             pairingCode = payload.pairing_code
             pairingNonce = payload.pairing_nonce
 
-            if let quicHostPort = parseHostAndPort(payload.quic_endpoint) {
-                manualHost = quicHostPort.host
-                manualQuicPort = String(quicHostPort.port)
-            }
+            manualHost = quicHostPort.host
+            manualQuicPort = String(quicHostPort.port)
 
             selectedEndpoint = nil
             status = "QR payload imported"
@@ -374,6 +386,10 @@ final class CaptureViewModel: ObservableObject {
         }
 
         return (String(parts[0]), port)
+    }
+
+    private func isValidPort(_ port: Int) -> Bool {
+        (1...65535).contains(port)
     }
 
     private func isExpired(_ expiresAtUtc: String) -> Bool {
