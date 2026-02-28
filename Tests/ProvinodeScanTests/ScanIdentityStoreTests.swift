@@ -1,4 +1,5 @@
 import CryptoKit
+import ProvinodeRoomContracts
 import XCTest
 @testable import ProvinodeScan
 
@@ -80,5 +81,69 @@ final class ScanIdentityStoreTests: XCTestCase {
         XCTAssertTrue(migrated.contains("client_tls_encrypted_blob_b64"))
         XCTAssertFalse(migrated.contains("legacy-secret"))
         XCTAssertFalse(migrated.contains("\"client_tls_pkcs12_b64\" : \"AQID\""))
+    }
+
+    func testTrustStoreEncryptsPersistedRecords() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scan-trust-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let now = Self.iso8601Now()
+        let record = TrustRecord(
+            peer_device_id: "desktop-1",
+            peer_display_name: "Desktop One",
+            peer_cert_fingerprint_sha256: String(repeating: "c", count: 64),
+            created_at_utc: now,
+            last_seen_at_utc: now,
+            status: "trusted",
+            previous_cert_fingerprints_sha256: nil)
+
+        try await trustStore.upsert(record)
+        let trusted = await trustStore.trustedPeer(deviceId: "desktop-1")
+        XCTAssertEqual(trusted?.peer_display_name, "Desktop One")
+
+        let fileUrl = root.appendingPathComponent("trust-records.json")
+        let rawFile = try String(contentsOf: fileUrl, encoding: .utf8)
+        XCTAssertTrue(rawFile.contains("\"format\" : \"provinode.scan.trust.v1\""))
+        XCTAssertFalse(rawFile.contains("Desktop One"))
+        XCTAssertFalse(rawFile.contains("desktop-1"))
+    }
+
+    func testTrustStoreReadsLegacyPlaintextAndMigratesOnWrite() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scan-trust-legacy-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fileUrl = root.appendingPathComponent("trust-records.json")
+        let now = Self.iso8601Now()
+        let legacyRecord = TrustRecord(
+            peer_device_id: "desktop-legacy",
+            peer_display_name: "Legacy Desktop",
+            peer_cert_fingerprint_sha256: String(repeating: "d", count: 64),
+            created_at_utc: now,
+            last_seen_at_utc: now,
+            status: "trusted",
+            previous_cert_fingerprints_sha256: nil)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let legacyData = try encoder.encode(["desktop-legacy": legacyRecord])
+        try legacyData.write(to: fileUrl, options: .atomic)
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let loaded = await trustStore.trustedPeer(deviceId: "desktop-legacy")
+        XCTAssertEqual(loaded?.peer_display_name, "Legacy Desktop")
+
+        try await trustStore.upsert(legacyRecord)
+        let migrated = try String(contentsOf: fileUrl, encoding: .utf8)
+        XCTAssertTrue(migrated.contains("\"format\" : \"provinode.scan.trust.v1\""))
+        XCTAssertFalse(migrated.contains("Legacy Desktop"))
+    }
+
+    private static func iso8601Now() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: .now)
     }
 }

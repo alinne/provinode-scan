@@ -7,6 +7,7 @@
 - Scanner identity is persisted locally as a long-lived signing key.
 - Scanner client mTLS credential payload is encrypted at rest (AES-GCM) before local persistence.
 - Trust records are persisted locally with paired desktop device ID + desktop certificate fingerprint hash for live-stream pinning.
+- Trust records are encrypted at rest (AES-GCM) with backward-compatible legacy plaintext read support.
 - Pairing response bootstraps a scanner client mTLS credential that is persisted locally for QUIC client authentication.
 - Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint server verification and scanner client certificate presentation.
 - Secure-channel hello carries scanner device identity + fingerprint + scanner signing public key + signed hello proof.
