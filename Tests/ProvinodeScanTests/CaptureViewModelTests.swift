@@ -138,4 +138,28 @@ final class CaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.status, "QR payload desktop certificate fingerprint is invalid")
     }
+
+    func testApplyPairingQrPayloadRejectsInvalidSignaturePayload() {
+        let viewModel = CaptureViewModel()
+
+        let payload = """
+        {
+          "pairing_token": "01JTQRPAIRTOKENABCDEFGHJK",
+          "pairing_code": "482915",
+          "pairing_nonce": "01JNONCEABCDEFGHJKMNPQRSTV",
+          "desktop_device_id": "01JDESKTOPABCDEFGHJKMNPQRS",
+          "desktop_display_name": "Room Receiver",
+          "pairing_endpoint": "https://192.168.1.44:7448/pairing/confirm",
+          "quic_endpoint": "192.168.1.44:7447",
+          "expires_at_utc": "2099-02-28T12:00:00Z",
+          "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+          "protocol_version": "1.1",
+          "signature_b64": "$$$"
+        }
+        """
+
+        viewModel.applyPairingQrPayload(payload)
+
+        XCTAssertEqual(viewModel.status, "QR payload signature is missing or invalid")
+    }
 }

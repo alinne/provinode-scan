@@ -49,7 +49,7 @@ Recorded sessions are stored in app support with this layout:
 - Start `provinode-room` in simulation mode (`--simulation-mode true --webcam-source synthetic --calibration-source synthetic`).
 - Call `POST /pairing/start` on desktop and copy `pairing_qr_payload` JSON.
 - Paste payload into the iOS simulator QR import panel and tap `Import QR payload`.
-- Import validates endpoint security and freshness (`https`, non-expired token, supported wire major, valid desktop fingerprint).
+- Import validates endpoint security and freshness (`https`, non-expired token, supported wire major, valid desktop fingerprint, Base64 signature payload).
 - Pair, start capture, and stream synthetic samples to desktop receiver.
 
 See `docs` in the desktop repo for Vault mapping and reconstruction linkage.

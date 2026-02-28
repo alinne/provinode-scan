@@ -135,6 +135,10 @@ final class CaptureViewModel: ObservableObject {
                 status = "QR payload desktop certificate fingerprint is invalid"
                 return
             }
+            guard isValidSignaturePayload(payload.signature_b64) else {
+                status = "QR payload signature is missing or invalid"
+                return
+            }
 
             manualHost = pairingUrl.host ?? manualHost
             manualPort = String(pairingUrl.port ?? 7448)
@@ -416,5 +420,16 @@ final class CaptureViewModel: ObservableObject {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return fractional.date(from: value)
+    }
+
+    private func isValidSignaturePayload(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let decoded = Data(base64Encoded: trimmed)
+        else {
+            return false
+        }
+
+        return !decoded.isEmpty
     }
 }
