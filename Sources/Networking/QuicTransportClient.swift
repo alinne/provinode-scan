@@ -30,7 +30,8 @@ actor QuicTransportClient {
         port: Int,
         pinnedFingerprintSha256: String?,
         sessionId: String,
-        scanIdentity: ScanIdentityMaterial
+        scanIdentity: ScanIdentityMaterial,
+        scanClientMtlsIdentity: ScanClientTlsIdentityMaterial?
     ) async throws {
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -41,7 +42,8 @@ actor QuicTransportClient {
             port: port,
             pinnedFingerprintSha256: pinnedFingerprintSha256,
             sessionId: sessionId,
-            scanIdentity: scanIdentity)
+            scanIdentity: scanIdentity,
+            scanClientMtlsIdentity: scanClientMtlsIdentity)
         connectionPlan = plan
         activeSessionId = sessionId
 
@@ -433,6 +435,14 @@ actor QuicTransportClient {
 
     private func establishConnection(plan: ConnectionPlan, isReconnect: Bool) async throws {
         let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
+        if let scanClientMtlsIdentity = plan.scanClientMtlsIdentity {
+            let identity = try Self.importPkcs12Identity(
+                pkcs12Data: scanClientMtlsIdentity.pkcs12Data,
+                password: scanClientMtlsIdentity.password)
+            let secIdentity = sec_identity_create(identity)!
+            sec_protocol_options_set_local_identity(quicOptions.securityProtocolOptions, secIdentity)
+        }
+
         sec_protocol_options_set_verify_block(quicOptions.securityProtocolOptions, { _, secTrust, complete in
             let trustRef = sec_trust_copy_ref(secTrust).takeRetainedValue()
 
@@ -568,6 +578,7 @@ private struct ConnectionPlan: Sendable {
     let pinnedFingerprintSha256: String?
     let sessionId: String
     let scanIdentity: ScanIdentityMaterial
+    let scanClientMtlsIdentity: ScanClientTlsIdentityMaterial?
 }
 
 private final class ConnectionStartContinuationBox: @unchecked Sendable {
@@ -601,5 +612,26 @@ private extension ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
+    }
+}
+
+private extension QuicTransportClient {
+    static func importPkcs12Identity(pkcs12Data: Data, password: String) throws -> SecIdentity {
+        var items: CFArray?
+        let options: NSDictionary = [kSecImportExportPassphrase as String: password]
+        let status = SecPKCS12Import(pkcs12Data as CFData, options, &items)
+        guard status == errSecSuccess,
+              let importedItems = items as? [[String: Any]],
+              let first = importedItems.first,
+              let rawIdentity = first[kSecImportItemIdentity as String]
+        else {
+            throw NSError(
+                domain: "QuicTransportClient",
+                code: 2010,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to import scan client mTLS identity."])
+        }
+
+        let identity = rawIdentity as! SecIdentity
+        return identity
     }
 }

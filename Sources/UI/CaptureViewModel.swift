@@ -19,6 +19,7 @@ final class CaptureViewModel: ObservableObject {
 
     private let discovery = LanDiscoveryService()
     private let trustStore: TrustStore
+    private let scanIdentityStore: ScanIdentityStore
     private let pairingService: PairingService
     private let scanIdentity: ScanIdentityMaterial
     private let transport = QuicTransportClient()
@@ -31,6 +32,7 @@ final class CaptureViewModel: ObservableObject {
             self.trustStore = trustStore
             self.pairingService = PairingService(trustStore: trustStore)
             let identityStore = try ScanIdentityStore()
+            self.scanIdentityStore = identityStore
             self.scanIdentity = identityStore.material()
         } catch {
             fatalError("Unable to initialize scan app stores: \(error.localizedDescription)")
@@ -69,7 +71,7 @@ final class CaptureViewModel: ObservableObject {
         status = "Pairing..."
 
         do {
-            let trust = try await pairingService.confirmPairing(
+            let result = try await pairingService.confirmPairing(
                 endpoint: endpoint,
                 pairingNonce: pairingNonce,
                 pairingCode: pairingCode,
@@ -77,7 +79,19 @@ final class CaptureViewModel: ObservableObject {
                 scanDisplayName: UIDevice.current.name,
                 scanCertFingerprintSha256: scanIdentity.certFingerprintSha256,
                 desktopCertFingerprintSha256: endpoint.pairingCertFingerprintSha256 ?? "")
-            status = "Paired with \(trust.peer_display_name)"
+
+            if let scanClientMtls = result.scan_client_mtls,
+               let pkcs12Data = Data(base64Encoded: scanClientMtls.pkcs12_b64)
+            {
+                try scanIdentityStore.persistClientTlsIdentity(
+                    pkcs12Data: pkcs12Data,
+                    password: scanClientMtls.password,
+                    certFingerprintSha256: scanClientMtls.cert_fingerprint_sha256)
+            } else if result.scan_client_mtls != nil {
+                throw PairingError.serverRejected
+            }
+
+            status = "Paired with \(result.trust_record.peer_display_name)"
         } catch {
             status = "Pairing failed: \(error.localizedDescription)"
         }
@@ -102,17 +116,23 @@ final class CaptureViewModel: ObservableObject {
         if let endpoint = resolvedStreamingEndpoint(),
            let trustedPeer = await trustedPeer(for: endpoint)
         {
-            do {
-                try await transport.connect(
-                    host: endpoint.host,
-                    port: endpoint.port,
-                    pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
-                    sessionId: sessionId,
-                    scanIdentity: scanIdentity)
-                status = "Secure QUIC connected"
-                activeTransport = transport
-            } catch {
-                status = "QUIC connect failed, retrying while recording locally: \(error.localizedDescription)"
+            if let scanClientMtlsIdentity = scanIdentityStore.clientTlsIdentity() {
+                do {
+                    try await transport.connect(
+                        host: endpoint.host,
+                        port: endpoint.port,
+                        pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
+                        sessionId: sessionId,
+                        scanIdentity: scanIdentity,
+                        scanClientMtlsIdentity: scanClientMtlsIdentity)
+                    status = "Secure QUIC connected"
+                    activeTransport = transport
+                } catch {
+                    status = "QUIC connect failed, retrying while recording locally: \(error.localizedDescription)"
+                    await transport.disconnect()
+                }
+            } else {
+                status = "Missing scanner mTLS identity. Re-run pairing, recording locally for now."
                 await transport.disconnect()
             }
         } else {

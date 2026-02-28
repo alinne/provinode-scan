@@ -6,7 +6,8 @@
 - Pairing lockout is enforced by desktop after repeated invalid codes.
 - Scanner identity is persisted locally as a long-lived signing key.
 - Trust records are persisted locally with paired desktop device ID + desktop certificate fingerprint hash for live-stream pinning.
-- Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint verification in the client.
+- Pairing response bootstraps a scanner client mTLS credential that is persisted locally for QUIC client authentication.
+- Stream transport uses QUIC + TLS 1.3 with pinned-fingerprint server verification and scanner client certificate presentation.
 - Secure-channel hello carries scanner device identity + fingerprint + scanner signing public key + signed hello proof.
 - Resume checkpoints and backpressure hints are exchanged on encrypted control payloads.
 - Scanner buffers recent sample frames and replays missing tail samples when desktop sends resume control requests.

@@ -36,7 +36,7 @@ actor PairingService {
         scanDisplayName: String,
         scanCertFingerprintSha256: String,
         desktopCertFingerprintSha256: String
-    ) async throws -> TrustRecord {
+    ) async throws -> PairingConfirmResult {
         guard let pinnedFingerprint = endpoint.pairingCertFingerprintSha256,
               Self.isValidSha256Hex(pinnedFingerprint)
         else {
@@ -90,9 +90,15 @@ actor PairingService {
 
         switch httpResponse.statusCode {
         case 200:
+            if let result = try? JSONDecoder().decode(PairingConfirmResult.self, from: data) {
+                try await trustStore.upsert(result.trust_record)
+                return result
+            }
+
+            // Backward-compatible decode path for receivers that still return bare TrustRecord.
             let record = try JSONDecoder().decode(TrustRecord.self, from: data)
             try await trustStore.upsert(record)
-            return record
+            return PairingConfirmResult(trust_record: record, scan_client_mtls: nil)
         case 401:
             throw PairingError.invalidCode
         case 410:

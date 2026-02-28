@@ -8,6 +8,7 @@
    - discover/select desktop endpoint (preferred, includes TLS fingerprint metadata)
    - or enter manual host (desktop LAN IP) + pairing port + desktop pairing TLS fingerprint
    - pair using short code + nonce
+   - scanner mTLS identity is provisioned automatically from pairing response
    - start stream (secure hello is signed automatically using persisted scanner identity key)
    - start capture
 4. Stop capture to finalize local `RoomCaptureSession` artifact.
