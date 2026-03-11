@@ -35,7 +35,7 @@ struct ContentView: View {
                     }
 
                     Button("Show calibration pattern") {
-                        vm.isCalibrationPatternPresented = true
+                        Task { await vm.prepareCalibrationPattern() }
                     }
                 }
 
@@ -118,7 +118,10 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $vm.isCalibrationPatternPresented) {
-            CalibrationPatternView()
+            PhoneAnchorDisplayView(
+                session: vm.phoneAnchorSession,
+                boardImageData: vm.phoneAnchorBoardImageData,
+                detail: vm.calibrationPatternDetail)
         }
         .task {
             await vm.startDiscovery()
