@@ -46,6 +46,29 @@ struct CalibrationPatternView: View {
                 VStack(spacing: 4) {
                     Text(phoneAnchorSession.anchor_label)
                         .font(.subheadline.weight(.semibold))
+                    Text(displayTargetLabel(phoneAnchorSession.display_target))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let surface = phoneAnchorSession.display_surface {
+                        Text(surfaceLabel(surface))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let revision = phoneAnchorSession.board_revision, !revision.isEmpty {
+                        Text("Board \(revision)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let sha = phoneAnchorSession.board_image_sha256, !sha.isEmpty {
+                        Text("Hash \(String(sha.prefix(12)))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if phoneAnchorSession.observation_count > 0 || phoneAnchorSession.relationship_count > 0 {
+                        Text("Observations \(phoneAnchorSession.observation_count) • Relationships \(phoneAnchorSession.relationship_count)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     Text("Anchor expires \(phoneAnchorSession.expires_at_utc)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -76,6 +99,22 @@ struct CalibrationPatternView: View {
         }
 
         return "Hold the phone so the desktop webcam can detect this board."
+    }
+
+    private func displayTargetLabel(_ target: MarkerDisplayTarget) -> String {
+        switch target {
+        case .desktopDisplay:
+            return "Display anchor board"
+        case .phoneScreen:
+            return "Phone anchor board"
+        }
+    }
+
+    private func surfaceLabel(_ surface: MarkerDisplaySurfaceSnapshot) -> String {
+        let widthMm = Int((surface.width_meters * 1000).rounded())
+        let heightMm = Int((surface.height_meters * 1000).rounded())
+        let label = surface.display_label?.isEmpty == false ? surface.display_label! : "Anchor surface"
+        return "\(label) • \(widthMm)×\(heightMm) mm"
     }
 }
 
