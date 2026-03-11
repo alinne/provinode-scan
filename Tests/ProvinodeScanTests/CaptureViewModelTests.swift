@@ -45,6 +45,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -85,6 +86,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2000-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -109,6 +111,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -133,6 +136,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "2.0",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -157,6 +161,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "not-a-sha256",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -181,6 +186,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "$$$"
         }
         """
@@ -205,6 +211,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "c2lnbmF0dXJl"
         }
         """
@@ -229,6 +236,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
@@ -251,6 +259,7 @@ final class CaptureViewModelTests: XCTestCase {
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
           "protocol_version": "1.1",
+          "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
