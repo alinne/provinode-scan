@@ -15,6 +15,9 @@ final class CaptureViewModel: ObservableObject {
     @Published var pairingQrPayloadJson: String = ""
     @Published var isQrScannerPresented = false
     @Published var isCalibrationPatternPresented = false
+    @Published var phoneAnchorSession: PhoneAnchorSessionSnapshot?
+    @Published var phoneAnchorBoardImageData: Data?
+    @Published var calibrationPatternDetail: String?
     @Published var status: String = "Idle"
     @Published var isCapturing = false
     @Published var metrics = ScanSessionMetrics()
@@ -216,6 +219,35 @@ final class CaptureViewModel: ObservableObject {
         pairingQrPayloadJson = payload
         applyPairingQrPayload(payload)
         isQrScannerPresented = false
+    }
+
+    func prepareCalibrationPattern() async {
+        phoneAnchorSession = nil
+        phoneAnchorBoardImageData = nil
+        calibrationPatternDetail = nil
+
+        guard let endpoint = resolvedPairingEndpoint() else {
+            calibrationPatternDetail = "No trusted desktop selected. Showing local fallback pattern."
+            isCalibrationPatternPresented = true
+            return
+        }
+
+        do {
+            if let session = try await pairingService.fetchCurrentPhoneAnchorSession(endpoint: endpoint) {
+                phoneAnchorSession = session
+                let board = try await pairingService.fetchPhoneAnchorBoardImage(endpoint: endpoint, anchorId: session.anchor_id)
+                phoneAnchorBoardImageData = board
+                calibrationPatternDetail = session.display_message ?? "Phone anchor active"
+                status = "Loaded phone anchor pattern"
+            } else {
+                calibrationPatternDetail = "No active phone anchor session. Showing fallback pattern."
+            }
+        } catch {
+            calibrationPatternDetail = "Phone anchor unavailable. Showing fallback pattern."
+            status = "Phone anchor fetch failed: \(error.localizedDescription)"
+        }
+
+        isCalibrationPatternPresented = true
     }
 
     func startCapture() async {

@@ -55,33 +55,12 @@ actor PairingService {
             pairing_code: pairingCode,
             pairing_confirm: confirmPayload))
 
-        let baseHost = endpoint.host.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hostWithScheme: String
-        if baseHost.hasPrefix("http://") || baseHost.hasPrefix("https://") {
-            hostWithScheme = baseHost
-        } else {
-            hostWithScheme = "\(endpoint.pairingScheme)://\(baseHost)"
-        }
-
-        guard var components = URLComponents(string: hostWithScheme) else {
-            throw PairingError.serverRejected
-        }
-        components.port = endpoint.port
-        components.path = "/pairing/confirm"
-
-        guard let url = components.url else {
-            throw PairingError.serverRejected
-        }
-
+        let url = try buildURL(for: endpoint, path: "/pairing/confirm", portOverride: endpoint.port)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = requestBody
-
-        let session = URLSession(
-            configuration: .ephemeral,
-            delegate: PinnedTlsDelegate(expectedFingerprintSha256: pinnedFingerprint),
-            delegateQueue: nil)
+        let session = makePinnedSession(expectedFingerprintSha256: pinnedFingerprint)
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -109,6 +88,51 @@ actor PairingService {
             throw PairingError.serverRejected
         }
     }
+
+    func fetchCurrentPhoneAnchorSession(endpoint: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot? {
+        guard let pinnedFingerprint = endpoint.pairingCertFingerprintSha256,
+              Self.isValidSha256Hex(pinnedFingerprint)
+        else {
+            throw PairingError.untrustedEndpoint
+        }
+
+        let url = try buildURL(for: endpoint, path: "/scene/anchors/phone/current", portOverride: endpoint.port)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let session = makePinnedSession(expectedFingerprintSha256: pinnedFingerprint)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PairingError.serverRejected
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            return try JSONDecoder().decode(PhoneAnchorSessionSnapshot.self, from: data)
+        case 204, 404:
+            return nil
+        default:
+            throw PairingError.serverRejected
+        }
+    }
+
+    func fetchPhoneAnchorBoardImage(endpoint: PairingEndpoint, anchorId: String) async throws -> Data {
+        guard let pinnedFingerprint = endpoint.pairingCertFingerprintSha256,
+              Self.isValidSha256Hex(pinnedFingerprint)
+        else {
+            throw PairingError.untrustedEndpoint
+        }
+
+        let url = try buildURL(for: endpoint, path: "/scene/anchors/\(anchorId)/board.png", portOverride: endpoint.port)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let session = makePinnedSession(expectedFingerprintSha256: pinnedFingerprint)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw PairingError.serverRejected
+        }
+
+        return data
+    }
 }
 
 extension PairingError: LocalizedError {
@@ -129,6 +153,34 @@ extension PairingError: LocalizedError {
 }
 
 private extension PairingService {
+    func buildURL(for endpoint: PairingEndpoint, path: String, portOverride: Int? = nil) throws -> URL {
+        let baseHost = endpoint.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hostWithScheme: String
+        if baseHost.hasPrefix("http://") || baseHost.hasPrefix("https://") {
+            hostWithScheme = baseHost
+        } else {
+            hostWithScheme = "\(endpoint.pairingScheme)://\(baseHost)"
+        }
+
+        guard var components = URLComponents(string: hostWithScheme) else {
+            throw PairingError.serverRejected
+        }
+        components.port = portOverride ?? endpoint.port
+        components.path = path
+
+        guard let url = components.url else {
+            throw PairingError.serverRejected
+        }
+        return url
+    }
+
+    func makePinnedSession(expectedFingerprintSha256: String) -> URLSession {
+        URLSession(
+            configuration: .ephemeral,
+            delegate: PinnedTlsDelegate(expectedFingerprintSha256: expectedFingerprintSha256),
+            delegateQueue: nil)
+    }
+
     static func isValidSha256Hex(_ value: String) -> Bool {
         guard value.count == 64 else { return false }
         return value.allSatisfy { char in
