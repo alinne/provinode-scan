@@ -10,10 +10,13 @@
 		0A52EA16E3431E5520B342E3 /* ProvinodeScanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30539B50B6578189BF0B507 /* ProvinodeScanApp.swift */; };
 		0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */; };
 		35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */; };
+		3C311A9C2B7A4D9D8C24A101 /* PairingQrVerificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C311A9C2B7A4D9D8C24A100 /* PairingQrVerificationService.swift */; };
+		4680D8D4417B4245A67EA726 /* PairingQrVerificationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350A6B4C9B704C4C9206B6D4 /* PairingQrVerificationServiceTests.swift */; };
 		542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */; };
 		55C3230C57BBF6B5DCBEEED4 /* EngineSecureChannelCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */; };
 		5AE50999FB30AA8B2E4EEC6C /* CalibrationPatternView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */; };
 		5D1101A9C41F6C4F6787C790 /* ULID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B91C4745E8E1891EB036960 /* ULID.swift */; };
+		5DFCE856D3AE1F96FD356F1E /* RecordedSessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */; };
 		5E176F93D3351B1DC3F53EC7 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 76E8D74391C69E1A578AEE5D /* ProvinodeRoomContracts */; };
 		6088492A86C25DA3EA0533FD /* TrustStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDF49790D658CA8FC64AFEB /* TrustStore.swift */; };
 		676D88572FC1EFE6069918B9 /* SessionRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D254857DDE20D05A99E27D /* SessionRecorder.swift */; };
@@ -23,12 +26,14 @@
 		95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */; };
 		AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */; };
 		B23DACE90E09DAADECDFC913 /* Sha256.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */; };
+		BB5B3AE95E0DBB2002117327 /* ScanCaptureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */; };
 		BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */; };
 		CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */; };
 		D00F1900539F37B37DD704CE /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94414950604717D1A400ED1 /* PairingService.swift */; };
 		D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */; };
 		EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */; };
 		F14F07128D4F82DDF8BDE3D2 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
+		F58D33B821AFB0F856EB904A /* RecordedSessionLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */; };
 		FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */; };
 		FEC839608187B777AA3D0704 /* StructuredLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E46731DC242956565BF1920D /* StructuredLog.swift */; };
 /* End PBXBuildFile section */
@@ -50,11 +55,15 @@
 		1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSecureChannelCryptoTests.swift; sourceTree = "<group>"; };
 		2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderTests.swift; sourceTree = "<group>"; };
 		30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCapturePipeline.swift; sourceTree = "<group>"; };
+		350A6B4C9B704C4C9206B6D4 /* PairingQrVerificationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationServiceTests.swift; sourceTree = "<group>"; };
+		3C311A9C2B7A4D9D8C24A100 /* PairingQrVerificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationService.swift; sourceTree = "<group>"; };
 		491E01F2795C326330EBF354 /* CaptureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModel.swift; sourceTree = "<group>"; };
+		4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedSessionLibraryTests.swift; sourceTree = "<group>"; };
 		5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModelTests.swift; sourceTree = "<group>"; };
 		6E28A27C0A0003BCC8E2D4A5 /* ProvinodeScanTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ProvinodeScanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sha256.swift; sourceTree = "<group>"; };
 		703680052CF0712179BDB312 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedSessionLibrary.swift; sourceTree = "<group>"; };
 		81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionMetrics.swift; sourceTree = "<group>"; };
 		8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSecureChannelCrypto.swift; sourceTree = "<group>"; };
 		8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilityPolicy.swift; sourceTree = "<group>"; };
@@ -69,6 +78,7 @@
 		DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanDiscoveryService.swift; sourceTree = "<group>"; };
 		DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIdentityStoreTests.swift; sourceTree = "<group>"; };
 		E46731DC242956565BF1920D /* StructuredLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredLog.swift; sourceTree = "<group>"; };
+		E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCaptureState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +129,7 @@
 			children = (
 				8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */,
 				DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */,
+				3C311A9C2B7A4D9D8C24A100 /* PairingQrVerificationService.swift */,
 				C94414950604717D1A400ED1 /* PairingService.swift */,
 				A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */,
 			);
@@ -128,6 +139,7 @@
 		4BA1C31A9D0BFEADD3D6C3EA /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */,
 				81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */,
 			);
 			path = Models;
@@ -201,6 +213,7 @@
 		EC3A31093206370772A077F9 /* Storage */ = {
 			isa = PBXGroup;
 			children = (
+				7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */,
 				15D254857DDE20D05A99E27D /* SessionRecorder.swift */,
 				9CDF49790D658CA8FC64AFEB /* TrustStore.swift */,
 			);
@@ -212,6 +225,8 @@
 			children = (
 				5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */,
 				1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */,
+				350A6B4C9B704C4C9206B6D4 /* PairingQrVerificationServiceTests.swift */,
+				4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */,
 				DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */,
 				2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */,
 			);
@@ -304,11 +319,14 @@
 				FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */,
 				95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */,
 				542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */,
+				3C311A9C2B7A4D9D8C24A101 /* PairingQrVerificationService.swift in Sources */,
 				D00F1900539F37B37DD704CE /* PairingService.swift in Sources */,
 				0A52EA16E3431E5520B342E3 /* ProvinodeScanApp.swift in Sources */,
 				EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */,
 				35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */,
+				5DFCE856D3AE1F96FD356F1E /* RecordedSessionLibrary.swift in Sources */,
 				0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */,
+				BB5B3AE95E0DBB2002117327 /* ScanCaptureState.swift in Sources */,
 				6A8E739B6CF0E2093E4D20D9 /* ScanIdentityStore.swift in Sources */,
 				CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */,
 				676D88572FC1EFE6069918B9 /* SessionRecorder.swift in Sources */,
@@ -325,6 +343,8 @@
 			files = (
 				D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */,
 				55C3230C57BBF6B5DCBEEED4 /* EngineSecureChannelCryptoTests.swift in Sources */,
+				4680D8D4417B4245A67EA726 /* PairingQrVerificationServiceTests.swift in Sources */,
+				F58D33B821AFB0F856EB904A /* RecordedSessionLibraryTests.swift in Sources */,
 				BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */,
 				AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */,
 			);

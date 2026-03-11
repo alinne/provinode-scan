@@ -13,6 +13,9 @@ AUTO_CAPTURE_SECONDS="${AUTO_CAPTURE_SECONDS:-}"
 AUTO_EXPORT="${AUTO_EXPORT:-0}"
 SESSION_ID_OVERRIDE="${SESSION_ID_OVERRIDE:-}"
 DISABLE_ENGINE_SECURE_CHANNEL="${DISABLE_ENGINE_SECURE_CHANNEL:-0}"
+WAIT_FOR_EXPORT="${WAIT_FOR_EXPORT:-0}"
+EXPORT_TIMEOUT_SECONDS="${EXPORT_TIMEOUT_SECONDS:-90}"
+SUMMARY_JSON="${SUMMARY_JSON:-}"
 
 usage() {
   cat <<EOF
@@ -30,6 +33,10 @@ Options:
   --session-id <id>          Override session id for auto-capture run.
   --disable-engine-secure-channel
                              Use plaintext sample/control channels over mTLS transport.
+  --wait-for-export          Wait for exported session files in simulator container.
+  --export-timeout-seconds <n>
+                             Timeout when waiting for exported session files.
+  --summary-json <path>      Write simulator/export summary JSON.
 EOF
 }
 
@@ -74,6 +81,18 @@ while [[ $# -gt 0 ]]; do
     --disable-engine-secure-channel)
       DISABLE_ENGINE_SECURE_CHANNEL=1
       shift 1
+      ;;
+    --wait-for-export)
+      WAIT_FOR_EXPORT=1
+      shift 1
+      ;;
+    --export-timeout-seconds)
+      EXPORT_TIMEOUT_SECONDS="${2:-}"
+      shift 2
+      ;;
+    --summary-json)
+      SUMMARY_JSON="${2:-}"
+      shift 2
       ;;
     --help|-h)
       usage
@@ -141,6 +160,11 @@ fi
 echo "Installing app ..."
 xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
 
+DATA_CONTAINER="$(xcrun simctl get_app_container "$SIMULATOR_ID" "$BUNDLE_ID" data 2>/dev/null || true)"
+if [[ -n "$DATA_CONTAINER" ]]; then
+  echo "Simulator data container: $DATA_CONTAINER"
+fi
+
 # Ensure launch environment variables are applied to a fresh app process.
 xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 
@@ -172,3 +196,54 @@ else
 fi
 
 echo "Provinode Scan launched on simulator $SIMULATOR_ID."
+
+if [[ "$WAIT_FOR_EXPORT" == "1" ]]; then
+  [[ "$AUTO_EXPORT" == "1" ]] || { echo "--wait-for-export requires --auto-export" >&2; exit 1; }
+  [[ -n "$SESSION_ID_OVERRIDE" ]] || { echo "--wait-for-export requires --session-id" >&2; exit 1; }
+  [[ -n "$DATA_CONTAINER" ]] || { echo "Simulator data container unavailable for export polling" >&2; exit 1; }
+  if [[ -n "$SUMMARY_JSON" ]]; then
+    command -v jq >/dev/null 2>&1 || { echo "jq is required when using --summary-json" >&2; exit 1; }
+  fi
+
+  SESSION_DIR="$DATA_CONTAINER/Library/Application Support/ProvinodeScan/Sessions/$SESSION_ID_OVERRIDE"
+  EXPORT_DIR="$DATA_CONTAINER/Documents/RoomCaptureExports/$SESSION_ID_OVERRIDE.roomcapture"
+  TRUST_STORE_PATH="$DATA_CONTAINER/Library/Application Support/ProvinodeScan/trust-records.json"
+  EXPORTED_MANIFEST="$EXPORT_DIR/session.manifest.json"
+  EXPORTED_INTEGRITY="$EXPORT_DIR/integrity.json"
+
+  deadline=$((SECONDS + EXPORT_TIMEOUT_SECONDS))
+  until [[ -f "$EXPORTED_MANIFEST" && -f "$EXPORTED_INTEGRITY" ]]; do
+    if (( SECONDS >= deadline )); then
+      echo "Timed out waiting for exported session files in $EXPORT_DIR" >&2
+      exit 1
+    fi
+    sleep 2
+  done
+
+  echo "Exported session directory: $EXPORT_DIR"
+  if [[ -n "$SUMMARY_JSON" ]]; then
+    mkdir -p "$(dirname "$SUMMARY_JSON")"
+    jq -n \
+      --arg simulator_id "$SIMULATOR_ID" \
+      --arg bundle_id "$BUNDLE_ID" \
+      --arg data_container "$DATA_CONTAINER" \
+      --arg session_id "$SESSION_ID_OVERRIDE" \
+      --arg session_directory "$SESSION_DIR" \
+      --arg export_directory "$EXPORT_DIR" \
+      --arg exported_manifest "$EXPORTED_MANIFEST" \
+      --arg exported_integrity "$EXPORTED_INTEGRITY" \
+      --arg trust_store_path "$TRUST_STORE_PATH" \
+      '{
+        simulator_id: $simulator_id,
+        bundle_id: $bundle_id,
+        data_container: $data_container,
+        session_id: $session_id,
+        session_directory: $session_directory,
+        export_directory: $export_directory,
+        exported_manifest: $exported_manifest,
+        exported_integrity: $exported_integrity,
+        trust_store_path: $trust_store_path
+      }' > "$SUMMARY_JSON"
+    echo "Summary: $SUMMARY_JSON"
+  fi
+fi

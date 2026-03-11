@@ -28,6 +28,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var dropNonKeyframes = false
     private var syntheticTask: Task<Void, Never>?
     private var syntheticStartedAt = Date()
+    private var captureStartedAt = Date()
 
     init(
         sessionId: String,
@@ -48,6 +49,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
     func start() throws {
         try DeviceCapabilityPolicy.enforce()
+        captureStartedAt = Date()
 
         #if targetEnvironment(simulator)
         syntheticStartedAt = Date()
@@ -110,24 +112,39 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 self.frameCounter += 1
                 let uptimeNs = Int64(DispatchTime.now().uptimeNanoseconds)
                 let elapsed = Date().timeIntervalSince(self.syntheticStartedAt)
-                let theta = elapsed * 0.25
-
-                let poseMatrix: [Float] = [
-                    1, 0, 0, 0,
-                    0, 1, 0, 0,
-                    0, 0, 1, 0,
-                    Float(cos(theta) * 1.2), 1.45, Float(sin(theta) * 1.2), 1
-                ]
+                let poseMatrix = self.syntheticPoseMatrix(elapsed: elapsed)
+                let poseConfidence = 0.78 + (min(0.18, elapsed / 80.0))
 
                 if let posePayload = try? JSONEncoder().encode(PosePayload(matrix: poseMatrix)) {
-                    await self.emit(kind: .cameraPose, captureTimeNs: uptimeNs, payload: posePayload, metadata: ["pose_confidence": "0.92"])
+                    self.metrics.poseConfidence = poseConfidence
+                    await self.emit(
+                        kind: .cameraPose,
+                        captureTimeNs: uptimeNs,
+                        payload: posePayload,
+                        metadata: [
+                            "pose_confidence": String(format: "%.2f", poseConfidence),
+                            "coordinate_space": "PhoneARWorld",
+                            "transform_representation": "world_from_camera",
+                            "transform_target_space": "PhoneARWorld",
+                            "camera_space": "DesktopCameraSpace",
+                            "camera_convention": "camera+x-right+y-down+z-forward"
+                        ])
                 }
 
                 if let intrinsicsPayload = try? JSONEncoder().encode(
                     IntrinsicsPayload(
                         matrix: [1200, 0, 960, 0, 1200, 540, 0, 0, 1],
                         resolution: [1920, 1080])) {
-                    await self.emit(kind: .intrinsics, captureTimeNs: uptimeNs, payload: intrinsicsPayload, metadata: nil)
+                    await self.emit(
+                        kind: .intrinsics,
+                        captureTimeNs: uptimeNs,
+                        payload: intrinsicsPayload,
+                        metadata: [
+                            "coordinate_space": "PhoneARWorld",
+                            "camera_model": "arkit.synthetic",
+                            "intrinsics_space": "DesktopCameraSpace",
+                            "camera_convention": "camera+x-right+y-down+z-forward"
+                        ])
                 }
 
                 let syntheticTimestamp = elapsed
@@ -147,7 +164,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
                 if !self.dropNonKeyframes && syntheticTimestamp - self.lastMeshTimestamp >= self.meshIntervalSec {
                     self.lastMeshTimestamp = syntheticTimestamp
-                    if let mesh = self.syntheticMeshPayload(theta: theta) {
+                    if let mesh = self.syntheticMeshPayload(elapsed: elapsed) {
                         await self.emit(kind: .meshAnchorBatch, captureTimeNs: uptimeNs, payload: mesh, metadata: ["format": "mesh_anchor_batch_sim"])
                         self.metrics.meshCount += 1
                     }
@@ -156,6 +173,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 self.metrics.avgKeyframeFps = self.metrics.keyframeCount > 0
                     ? Double(self.metrics.keyframeCount) / max(elapsed, 1)
                     : 0
+                self.metrics.captureDurationSeconds = elapsed
 
                 if self.frameCounter % 30 == 0 {
                     await self.emit(
@@ -170,30 +188,163 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         }
     }
 
-    private func syntheticMeshPayload(theta: Double) -> Data? {
-        let tx = Float(cos(theta) * 0.5)
-        let tz = Float(sin(theta) * 0.5)
-        let entry = MeshAnchorGeometryPayload(
-            identifier: "synthetic-anchor",
-            transform: [
-                1, 0, 0, 0,
-                0, 1, 0, 0,
-                0, 0, 1, 0,
-                tx, 0, tz, 1
-            ],
-            vertices: [
-                -1, 0, -1,
-                1, 0, -1,
-                1, 0, 1,
-                -1, 0, 1
-            ],
-            faceIndices: [0, 1, 2, 0, 2, 3])
-        return try? JSONEncoder().encode([entry])
+    private func syntheticPoseMatrix(elapsed: Double) -> [Float] {
+        let roomHalfWidth: Float = 1.8
+        let roomHalfDepth: Float = 1.5
+        let loopDuration = 32.0
+        let phase = (elapsed.truncatingRemainder(dividingBy: loopDuration)) / loopDuration
+        let segment = min(3, Int(phase * 4.0))
+        let local = Float((phase * 4.0) - Double(segment))
+
+        let x: Float
+        let z: Float
+        switch segment {
+        case 0:
+            x = -roomHalfWidth + (local * roomHalfWidth * 2.0)
+            z = -roomHalfDepth
+        case 1:
+            x = roomHalfWidth
+            z = -roomHalfDepth + (local * roomHalfDepth * 2.0)
+        case 2:
+            x = roomHalfWidth - (local * roomHalfWidth * 2.0)
+            z = roomHalfDepth
+        default:
+            x = -roomHalfWidth
+            z = roomHalfDepth - (local * roomHalfDepth * 2.0)
+        }
+
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            x, 1.48, z, 1
+        ]
+    }
+
+    private func syntheticMeshPayload(elapsed: Double) -> Data? {
+        let reveal = min(1.0, max(0.2, elapsed / 24.0))
+        let deskHeight: Float = 0.76
+        let deskDepth = Float(0.55 + (0.25 * reveal))
+        let shelfDepth = Float(0.28 + (0.12 * reveal))
+        let sofaDepth = Float(0.72 + (0.18 * reveal))
+        let entries: [MeshAnchorGeometryPayload] = [
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-floor",
+                transform: identityTransform(tx: 0, ty: 0, tz: 0),
+                vertices: [
+                    -2.2, 0, -1.8,
+                    2.2, 0, -1.8,
+                    2.2, 0, 1.8,
+                    -2.2, 0, 1.8
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-wall-back",
+                transform: identityTransform(tx: 0, ty: 0, tz: -1.8),
+                vertices: [
+                    -2.2, 0, 0,
+                    2.2, 0, 0,
+                    2.2, 2.6, 0,
+                    -2.2, 2.6, 0
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-wall-left",
+                transform: identityTransform(tx: -2.2, ty: 0, tz: 0),
+                vertices: [
+                    0, 0, -1.8,
+                    0, 0, 1.8,
+                    0, 2.6, 1.8,
+                    0, 2.6, -1.8
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-wall-right",
+                transform: identityTransform(tx: 2.2, ty: 0, tz: 0),
+                vertices: [
+                    0, 0, -1.8,
+                    0, 0, 1.8,
+                    0, 2.6, 1.8,
+                    0, 2.6, -1.8
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-ceiling",
+                transform: identityTransform(tx: 0, ty: 2.6, tz: 0),
+                vertices: [
+                    -2.2, 0, -1.8,
+                    2.2, 0, -1.8,
+                    2.2, 0, 1.8,
+                    -2.2, 0, 1.8
+                ],
+                faceIndices: [0, 2, 1, 0, 3, 2]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-wall-front-left",
+                transform: identityTransform(tx: 0, ty: 0, tz: 1.8),
+                vertices: [
+                    -2.2, 0, 0,
+                    -0.55, 0, 0,
+                    -0.55, 2.4, 0,
+                    -2.2, 2.4, 0
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-wall-front-right",
+                transform: identityTransform(tx: 0, ty: 0, tz: 1.8),
+                vertices: [
+                    0.55, 0, 0,
+                    2.2, 0, 0,
+                    2.2, 2.4, 0,
+                    0.55, 2.4, 0
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-desk",
+                transform: identityTransform(tx: 0.9, ty: deskHeight, tz: 0.7),
+                vertices: [
+                    -0.7, 0, -deskDepth,
+                    0.7, 0, -deskDepth,
+                    0.7, 0, deskDepth,
+                    -0.7, 0, deskDepth
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-shelf",
+                transform: identityTransform(tx: -1.7, ty: 1.05, tz: -1.1),
+                vertices: [
+                    -0.22, -1.05, -shelfDepth,
+                    0.22, -1.05, -shelfDepth,
+                    0.22, 1.05, shelfDepth,
+                    -0.22, 1.05, shelfDepth
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3]),
+            MeshAnchorGeometryPayload(
+                identifier: "synthetic-sofa",
+                transform: identityTransform(tx: -0.8, ty: 0.46, tz: 0.95),
+                vertices: [
+                    -0.9, 0, -sofaDepth,
+                    0.9, 0, -sofaDepth,
+                    0.9, 0, sofaDepth,
+                    -0.9, 0, sofaDepth
+                ],
+                faceIndices: [0, 1, 2, 0, 2, 3])
+        ]
+        return try? JSONEncoder().encode(entries)
+    }
+
+    private func identityTransform(tx: Float, ty: Float, tz: Float) -> [Float] {
+        [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            tx, ty, tz, 1
+        ]
     }
 
     private func process(frame: ARFrame) async {
         frameCounter += 1
         let captureTimeNs = Int64(frame.timestamp * 1_000_000_000)
+        metrics.captureDurationSeconds = Date().timeIntervalSince(captureStartedAt)
 
         await emitPose(frame: frame, captureTimeNs: captureTimeNs)
         await emitIntrinsics(frame: frame, captureTimeNs: captureTimeNs)
@@ -231,9 +382,22 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
     private func emitPose(frame: ARFrame, captureTimeNs: Int64) async {
         let transform = frame.camera.transform
+        let poseConfidence = Self.poseConfidence(for: frame.camera.trackingState)
+        metrics.poseConfidence = poseConfidence
         let posePayload = PosePayload(matrix: transform.toArray())
         guard let payload = try? JSONEncoder().encode(posePayload) else { return }
-        await emit(kind: .cameraPose, captureTimeNs: captureTimeNs, payload: payload, metadata: nil)
+        await emit(
+            kind: .cameraPose,
+            captureTimeNs: captureTimeNs,
+            payload: payload,
+            metadata: [
+                "pose_confidence": String(format: "%.2f", poseConfidence),
+                "coordinate_space": "PhoneARWorld",
+                "transform_representation": "world_from_camera",
+                "transform_target_space": "PhoneARWorld",
+                "camera_space": "DesktopCameraSpace",
+                "camera_convention": "camera+x-right+y-down+z-forward"
+            ])
     }
 
     private func emitIntrinsics(frame: ARFrame, captureTimeNs: Int64) async {
@@ -241,7 +405,16 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
             matrix: frame.camera.intrinsics.toArray3x3(),
             resolution: [Int(frame.camera.imageResolution.width), Int(frame.camera.imageResolution.height)])
         guard let payload = try? JSONEncoder().encode(intrinsics) else { return }
-        await emit(kind: .intrinsics, captureTimeNs: captureTimeNs, payload: payload, metadata: nil)
+        await emit(
+            kind: .intrinsics,
+            captureTimeNs: captureTimeNs,
+            payload: payload,
+            metadata: [
+                "coordinate_space": "PhoneARWorld",
+                "camera_model": "arkit.rgb",
+                "intrinsics_space": "DesktopCameraSpace",
+                "camera_convention": "camera+x-right+y-down+z-forward"
+            ])
     }
 
     private func emit(kind: CaptureSampleKind, captureTimeNs: Int64, payload: Data, metadata: [String: String]?) async {
@@ -367,6 +540,28 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         }
 
         return result
+    }
+
+    private static func poseConfidence(for trackingState: ARCamera.TrackingState) -> Double {
+        switch trackingState {
+        case .normal:
+            return 0.95
+        case .notAvailable:
+            return 0.10
+        case .limited(let reason):
+            switch reason {
+            case .initializing:
+                return 0.55
+            case .relocalizing:
+                return 0.45
+            case .excessiveMotion:
+                return 0.35
+            case .insufficientFeatures:
+                return 0.30
+            @unknown default:
+                return 0.25
+            }
+        }
     }
 }
 

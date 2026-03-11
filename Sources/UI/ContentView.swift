@@ -31,7 +31,7 @@ struct ContentView: View {
                         .frame(minHeight: 110)
                         .font(.system(.footnote, design: .monospaced))
                     Button("Import QR payload") {
-                        vm.applyPairingQrPayload(vm.pairingQrPayloadJson)
+                        Task { await vm.applyPairingQrPayload(vm.pairingQrPayloadJson) }
                     }
 
                     Button("Show calibration pattern") {
@@ -56,6 +56,8 @@ struct ContentView: View {
                         .textInputAutocapitalization(.never)
                     TextField("Pairing port", text: $vm.manualPort)
                         .keyboardType(.numberPad)
+                    TextField("Manual QUIC host (optional)", text: $vm.manualQuicHost)
+                        .textInputAutocapitalization(.never)
                     TextField("QUIC port", text: $vm.manualQuicPort)
                         .keyboardType(.numberPad)
                     TextField("Manual pairing cert fingerprint (sha256)", text: $vm.manualPairingFingerprintSha256)
@@ -84,11 +86,17 @@ struct ContentView: View {
                     }
 
                     LabeledContent("Status", value: vm.status)
+                    LabeledContent("Capture state", value: vm.captureState.rawValue)
+                    LabeledContent("Safe to stop", value: vm.safeToStop ? "yes" : "no")
+                    LabeledContent("Guidance", value: vm.captureCoaching)
                     LabeledContent("Samples", value: "\(vm.metrics.emittedSamples)")
                     LabeledContent("Drops", value: "\(vm.metrics.droppedSamples)")
                     LabeledContent("Keyframes", value: "\(vm.metrics.keyframeCount)")
                     LabeledContent("Depth", value: "\(vm.metrics.depthCount)")
                     LabeledContent("Mesh", value: "\(vm.metrics.meshCount)")
+                    LabeledContent("Duration", value: String(format: "%.1fs", vm.metrics.captureDurationSeconds))
+                    LabeledContent("Pose confidence", value: String(format: "%.2f", vm.metrics.poseConfidence))
+                    LabeledContent("Avg keyframe fps", value: String(format: "%.2f", vm.metrics.avgKeyframeFps))
                 }
 
                 if let session = vm.lastSessionDirectory {
@@ -107,6 +115,137 @@ struct ContentView: View {
                         Text(exportPath.path)
                             .font(.footnote)
                             .textSelection(.enabled)
+                    }
+                }
+
+                Section("Recorded sessions") {
+                    HStack {
+                        Button("Refresh session library") {
+                            Task { await vm.refreshSessionLibrary() }
+                        }
+                        Button("Export all filtered") {
+                            vm.exportAllSessions()
+                        }
+                        Spacer()
+                        Text("\(vm.filteredRecordedSessions.count) shown / \(vm.recordedSessions.count) total")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    TextField("Filter sessions", text: $vm.sessionLibraryFilter)
+                        .textInputAutocapitalization(.never)
+                    Text("Export root: \(vm.exportRootPath.path)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+
+                    if vm.filteredRecordedSessions.isEmpty {
+                        Text("No recorded sessions yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Selected session", selection: $vm.selectedRecordedSessionId) {
+                            ForEach(vm.filteredRecordedSessions, id: \.sessionId) { session in
+                                Text("\(session.sessionId) (\(session.integrityStatus))")
+                                    .tag(session.sessionId)
+                            }
+                        }
+
+                        if let session = vm.selectedRecordedSessionSummary {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Selected: \(session.sessionId)")
+                                    .font(.footnote.monospaced())
+                                Text("device \(session.sourceDeviceId)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("samples \(session.sampleCount) | blobs \(session.blobCount) | duration \(session.durationSummary)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("integrity \(session.integrityStatus) | exported \(session.exported ? "yes" : "no")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let exportPath = session.exportPath {
+                                    Text(exportPath.path)
+                                        .font(.caption2.monospaced())
+                                        .textSelection(.enabled)
+                                }
+                                Button("Export selected session") {
+                                    vm.exportSession(sessionId: session.sessionId)
+                                }
+                            }
+                        }
+
+                        ForEach(vm.filteredRecordedSessions.prefix(5), id: \.sessionId) { session in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.sessionId)
+                                    .font(.footnote.monospaced())
+                                Text("samples \(session.sampleCount) | blobs \(session.blobCount) | duration \(session.durationSummary)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("integrity \(session.integrityStatus) | exported \(session.exported ? "yes" : "no")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("Export this session") {
+                                    vm.exportSession(sessionId: session.sessionId)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Trusted desktops") {
+                    HStack {
+                        Button("Refresh trust") {
+                            Task { await vm.refreshTrustRecords() }
+                        }
+                        Button("Reset trust") {
+                            Task { await vm.resetTrustedDesktops() }
+                        }
+                    }
+
+                    TextField("Filter trusted desktops", text: $vm.trustFilter)
+                        .textInputAutocapitalization(.never)
+
+                    if vm.filteredTrustedPeers.isEmpty {
+                        Text("No trusted desktops yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Selected desktop", selection: $vm.selectedTrustDeviceId) {
+                            ForEach(vm.filteredTrustedPeers, id: \.peer_device_id) { peer in
+                                Text("\(peer.peer_display_name) (\(peer.status))")
+                                    .tag(peer.peer_device_id)
+                            }
+                        }
+
+                        Button("Revoke selected desktop") {
+                            Task { await vm.revokeTrustedDesktop() }
+                        }
+
+                        if let peer = vm.selectedTrustRecord {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Selected: \(peer.peer_display_name)")
+                                Text(peer.peer_device_id)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                Text("fingerprint \(peer.peer_cert_fingerprint_sha256)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                Text("status \(peer.status) | last seen \(peer.last_seen_at_utc)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        ForEach(vm.filteredTrustedPeers.prefix(5), id: \.peer_device_id) { peer in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(peer.peer_display_name)
+                                Text(peer.peer_device_id)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                Text("fingerprint \(peer.peer_cert_fingerprint_sha256.prefix(12))... | last seen \(peer.last_seen_at_utc)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }
