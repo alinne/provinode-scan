@@ -8,6 +8,10 @@ Native iOS app for Provinode room scanning (M1):
 - persistent scanner identity key for signed secure-channel hello proof
 - simulator synthetic capture mode for end-to-end validation without physical LiDAR
 
+## Internal API Standard
+- Repo-local internal API gate: `pwsh ./scripts/ops/Assert-InternalApiArchitecture.ps1`
+- Shared payload changes must align with the standard internal contract layout and must not introduce new app-local schema drift.
+
 ## Requirements
 - iPhone Pro with LiDAR (`iPhone 12 Pro` or newer Pro line)
 - iOS 17.0+

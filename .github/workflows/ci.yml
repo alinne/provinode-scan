@@ -13,6 +13,13 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify internal API architecture
+        shell: pwsh
+        run: |
+          $baseRef = if ("${{ github.event_name }}" -eq "pull_request" -and "${{ github.base_ref }}" -ne "") { "origin/${{ github.base_ref }}" } else { "HEAD~1" }
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/ops/Assert-InternalApiArchitecture.ps1 -BaseRef $baseRef -Strict
       - name: Install xcodegen
         run: brew install xcodegen
       - name: Generate project

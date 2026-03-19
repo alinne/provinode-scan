@@ -24,7 +24,7 @@ final class CaptureViewModel: ObservableObject {
     private let discovery = LanDiscoveryService()
     private let trustStore: TrustStore
     private let scanIdentityStore: ScanIdentityStore
-    private let pairingService: PairingService
+    private let pairingService: any PairingSessionClient
     private let scanIdentity: ScanIdentityMaterial
     private let transport = QuicTransportClient()
     private let simulatorAutoPairEnabled: Bool
@@ -36,11 +36,19 @@ final class CaptureViewModel: ObservableObject {
     private var pipeline: RoomCapturePipeline?
     private var simulatorAutomationStarted = false
 
-    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+    private struct PreparedPairingSession {
+        let status: PairingSessionStatusResponse
+        let startedNewSession: Bool
+    }
+
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        pairingService: (any PairingSessionClient)? = nil
+    ) {
         do {
             let trustStore = try TrustStore()
             self.trustStore = trustStore
-            self.pairingService = PairingService(trustStore: trustStore)
+            self.pairingService = pairingService ?? PairingService(trustStore: trustStore)
             let identityStore = try ScanIdentityStore()
             self.scanIdentityStore = identityStore
             self.scanIdentity = identityStore.material()
@@ -105,18 +113,18 @@ final class CaptureViewModel: ObservableObject {
             status = "Select or enter a desktop pairing endpoint first"
             return
         }
-        guard !pairingCode.isEmpty else {
-            status = "Enter the short pairing code"
-            return
-        }
-        guard !pairingNonce.isEmpty else {
-            status = "Enter the pairing nonce shown by desktop"
-            return
-        }
 
         status = "Pairing..."
 
         do {
+            let preparedSession = try await preparePairingSession(endpoint: endpoint)
+            guard !pairingCode.isEmpty, !pairingNonce.isEmpty else {
+                status = preparedSession.startedNewSession
+                    ? "Pairing session started. Import the current QR payload, then confirm pairing."
+                    : "Pairing session is active. Import the current QR payload, then confirm pairing."
+                return
+            }
+
             let result = try await pairingService.confirmPairing(
                 endpoint: endpoint,
                 pairingNonce: pairingNonce,
@@ -134,12 +142,12 @@ final class CaptureViewModel: ObservableObject {
                     password: scanClientMtls.password,
                     certFingerprintSha256: scanClientMtls.cert_fingerprint_sha256)
             } else if result.scan_client_mtls != nil {
-                throw PairingError.serverRejected
+                throw PairingError.serverRejected(nil)
             }
 
             status = "Paired with \(result.trust_record.peer_display_name)"
         } catch {
-            status = "Pairing failed: \(error.localizedDescription)"
+            status = Self.describePairingFailure(error)
         }
     }
 
@@ -218,12 +226,47 @@ final class CaptureViewModel: ObservableObject {
         isQrScannerPresented = false
     }
 
+    static func describePairingFailure(_ error: Error) -> String {
+        guard let pairingError = error as? PairingError else {
+            return "Pairing failed: \(error.localizedDescription)"
+        }
+
+        let description = pairingError.localizedDescription
+        switch pairingError {
+        case .authorityUnavailable:
+            if pairingError.inFlight {
+                return appendPairingDiagnosticReference(
+                    to: "Pairing waiting on authority: \(description)",
+                    pairingError: pairingError)
+            }
+
+            return appendPairingDiagnosticReference(
+                to: "Pairing unavailable: \(description)",
+                pairingError: pairingError)
+        case .sessionUnavailable, .expired:
+            return "Pairing session unavailable: \(description)"
+        case .attemptLimitReached:
+            return "Pairing attempts exhausted: \(description)"
+        case .lockedOut:
+            return "Pairing locked: \(description)"
+        case .invalidCode:
+            return "Pairing rejected: \(description)"
+        case .serverRejected, .untrustedEndpoint:
+            return appendPairingDiagnosticReference(
+                to: "Pairing failed: \(description)",
+                pairingError: pairingError)
+        }
+    }
+
     func startCapture() async {
         guard !isCapturing else { return }
 
         let sessionId = simulatorSessionIdOverride ?? ULID.generate()
         var activeTransport: QuicTransportClient?
-        var sessionMetadata: [String: String] = [:]
+        let sessionTraceparent = ScanTraceContext.makeTraceparent()
+        var sessionMetadata = Self.makeSessionMetadata(
+            sessionId: sessionId,
+            traceparent: sessionTraceparent)
         let recorder: SessionRecorder
         do {
             recorder = try SessionRecorder(
@@ -238,8 +281,10 @@ final class CaptureViewModel: ObservableObject {
         if let endpoint = resolvedStreamingEndpoint(),
            let trustedPeer = await trustedPeer(for: endpoint)
         {
-            sessionMetadata[RoomMetadataKeys.pairedPeerDeviceId] = trustedPeer.peer_device_id
-            sessionMetadata[RoomMetadataKeys.pairedPeerCertFingerprintSha256] = trustedPeer.peer_cert_fingerprint_sha256
+            sessionMetadata = Self.makeSessionMetadata(
+                sessionId: sessionId,
+                traceparent: sessionTraceparent,
+                trustedPeer: trustedPeer)
 
             if let scanClientMtlsIdentity = scanIdentityStore.clientTlsIdentity() {
                 do {
@@ -361,6 +406,16 @@ final class CaptureViewModel: ObservableObject {
             pairingCertFingerprintSha256: fingerprint.isEmpty ? nil : fingerprint,
             displayName: "Manual endpoint",
             desktopDeviceId: "manual-endpoint")
+    }
+
+    private func preparePairingSession(endpoint: PairingEndpoint) async throws -> PreparedPairingSession {
+        let activeStatus = try await pairingService.getActivePairingSession(endpoint: endpoint)
+        if activeStatus.session != nil || activeStatus.lockoutUntilUtc != nil {
+            return PreparedPairingSession(status: activeStatus, startedNewSession: false)
+        }
+
+        let startedStatus = try await pairingService.startPairingSession(endpoint: endpoint)
+        return PreparedPairingSession(status: startedStatus, startedNewSession: true)
     }
 
     private func resolvedStreamingEndpoint() -> PairingEndpoint? {
@@ -558,6 +613,38 @@ final class CaptureViewModel: ObservableObject {
             applyPairingQrPayload(payloadJson)
         }
         #endif
+    }
+
+    static func makeSessionMetadata(
+        sessionId: String,
+        traceparent: String,
+        trustedPeer: TrustRecord? = nil
+    ) -> [String: String] {
+        var metadata: [String: String] = [
+            RoomMetadataKeys.roomSessionId: sessionId,
+            RoomMetadataKeys.roomTraceparent: traceparent
+        ]
+
+        if let trustedPeer {
+            metadata[RoomMetadataKeys.pairedPeerDeviceId] = trustedPeer.peer_device_id
+            metadata[RoomMetadataKeys.pairedPeerCertFingerprintSha256] = trustedPeer.peer_cert_fingerprint_sha256
+        }
+
+        return metadata
+    }
+
+    private static func appendPairingDiagnosticReference(
+        to base: String,
+        pairingError: PairingError
+    ) -> String {
+        guard let diagnosticReference = pairingError.diagnosticReference,
+              !diagnosticReference.isEmpty,
+              !base.localizedCaseInsensitiveContains(diagnosticReference)
+        else {
+            return base
+        }
+
+        return "\(base) See \(diagnosticReference)."
     }
 
     private static func isTruthy(_ value: String?) -> Bool {
