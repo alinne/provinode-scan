@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linnaeus.internal/provinode-scan/internal-api-layout.manifest.json",
+  "title": "Provinode Scan Internal API Layout",
+  "type": "object",
+  "properties": {
+    "repo": { "const": "apps/provinode-scan" },
+    "conformance_state": { "const": "Adapter Client Guarded" },
+    "contract_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["contracts/proto", "specs/openapi", "specs/asyncapi", "specs/arazzo", "schemas/json"]
+    },
+    "primary_surfaces": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["native capture, pairing/session compatibility consumption, and secure-LAN payload contracts"]
+    },
+    "compatibility_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [
+        "consume shared pairing, capture, session, trust, and LAN payload contracts from apps/provinode-room-contracts",
+        "keep pairing and session truth on Room compatibility and engine-backed authority seams as the steady-state client model rather than app-local schemas",
+        "use shared RoomMetadataKeys and RoomContractVersions for capture/session metadata",
+        "propagate traceparent on authority-bearing HTTP pairing and bootstrap requests",
+        "decode application/problem+json responses for fail-closed authority behavior"
+      ]
+    }
+  },
+  "required": ["repo", "conformance_state", "contract_paths", "primary_surfaces", "compatibility_requirements"],
+  "additionalProperties": false
+}

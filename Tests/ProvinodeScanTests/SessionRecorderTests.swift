@@ -11,6 +11,7 @@ final class SessionRecorderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
         let sessionId = ULID.generate()
+        let traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
         let recorder = try SessionRecorder(
             sessionId: sessionId,
             sourceDeviceId: "test-device",
@@ -32,6 +33,7 @@ final class SessionRecorderTests: XCTestCase {
 
         try await recorder.record(envelope: envelope, payload: payload)
         let sessionDirectory = try await recorder.finalize(extraMetadata: [
+            RoomMetadataKeys.roomTraceparent: traceparent,
             RoomMetadataKeys.pairedPeerDeviceId: "desktop-1",
             RoomMetadataKeys.pairedPeerCertFingerprintSha256: String(repeating: "f", count: 64)
         ])
@@ -43,6 +45,7 @@ final class SessionRecorderTests: XCTestCase {
         let manifestData = try Data(contentsOf: sessionDirectory.appendingPathComponent("session.manifest.json"))
         let manifest = try JSONDecoder().decode(RoomCaptureSessionManifest.self, from: manifestData)
         XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.roomSessionId], sessionId)
+        XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.roomTraceparent], traceparent)
         XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.sourceDeviceId], "test-device")
         XCTAssertEqual(manifest.metadata?[RoomMetadataKeys.pairedPeerDeviceId], "desktop-1")
         XCTAssertEqual(
