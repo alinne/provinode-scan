@@ -1,28 +1,36 @@
 import CryptoKit
 import Foundation
+import LinnaeusEngineClientSdkApple
 import Network
 import ProvinodeRoomContracts
 import Security
 
 actor QuicTransportClient {
-    private let maxBufferedSampleFrames = 512
     private var connection: NWConnection?
     private var receiveTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
+    private var sessionState: ClientQuicSessionState = .idle
     private var secureSession: EngineSecureChannelCrypto.SessionKeys?
     private var outboundCounter: Int64 = 0
     private var inboundCounter: Int64 = -1
     private var receiveBuffer = Data()
-    private var lastAckedSampleSeq: Int64 = -1
     private var activeSessionId = ""
     private var connectionPlan: ConnectionPlan?
-    private var bufferedSampleSessionId = ""
-    private var bufferedSampleFrames: [Int64: Data] = [:]
-    private var bufferedSampleOrder: [Int64] = []
+    private var replayBuffer = ClientReplayBuffer(maxBufferedSampleFrames: 512)
     private var backpressureHandler: (@Sendable (BackpressureHint) async -> Void)?
+    private var controlPayloadHandler: (@Sendable (Data) async -> Bool)?
+    private var lifecycleEventHandler: (@Sendable (QuicTransportLifecycleEvent) async -> Void)?
 
     func setBackpressureHandler(_ handler: (@Sendable (BackpressureHint) async -> Void)?) {
         backpressureHandler = handler
+    }
+
+    func setControlPayloadHandler(_ handler: (@Sendable (Data) async -> Bool)?) {
+        controlPayloadHandler = handler
+    }
+
+    func setLifecycleEventHandler(_ handler: (@Sendable (QuicTransportLifecycleEvent) async -> Void)?) {
+        lifecycleEventHandler = handler
     }
 
     func connect(
@@ -37,6 +45,7 @@ actor QuicTransportClient {
         reconnectTask?.cancel()
         reconnectTask = nil
         closeConnection(resetReplayState: false, clearPlan: false)
+        sessionState = ClientQuicSessionPolicy.stateForConnectStart(isReconnect: false)
 
         let plan = ConnectionPlan(
             host: host,
@@ -49,8 +58,8 @@ actor QuicTransportClient {
         connectionPlan = plan
         activeSessionId = sessionId
 
-        if bufferedSampleSessionId != sessionId {
-            resetReplayBuffer(for: sessionId)
+        if replayBuffer.activeSessionId != sessionId {
+            replayBuffer.reset(for: sessionId)
         }
 
         do {
@@ -64,12 +73,16 @@ actor QuicTransportClient {
     func disconnect() {
         reconnectTask?.cancel()
         reconnectTask = nil
+        let sessionId = activeSessionId
+        if !sessionId.isEmpty, let lifecycleEventHandler {
+            Task { await lifecycleEventHandler(.disconnected(sessionId: sessionId)) }
+        }
         closeConnection(resetReplayState: true, clearPlan: true)
     }
 
     func sendControl<T: Encodable>(_ value: T) throws {
         let payload = try JSONEncoder().encode(value)
-        try sendPayload(channel: 0x01, payload: payload)
+        try sendPayload(channel: ClientQuicChannel.control.rawValue, payload: payload)
     }
 
     func sendSample(envelope: CaptureSampleEnvelope, payload: Data) throws {
@@ -82,13 +95,34 @@ actor QuicTransportClient {
         frame.append(envelopeData)
         frame.append(payload)
 
-        bufferSampleFrame(sampleSeq: envelope.sample_seq, frame: frame)
+        replayBuffer.buffer(sampleSeq: envelope.sample_seq, frame: frame, activeSessionId: activeSessionId)
         let requiresSecureChannel = connectionPlan?.requireEngineSecureChannel ?? true
         if requiresSecureChannel && secureSession == nil {
             return
         }
 
-        try sendPayload(channel: 0x02, payload: frame)
+        try sendPayload(channel: ClientQuicChannel.sample.rawValue, payload: frame)
+    }
+
+    func sendRemoteCaptureVideoFrame(
+        envelope: ClientRemoteCaptureVideoPacketEnvelope,
+        payload: Data
+    ) throws {
+        let frame = try ClientRemoteCaptureVideoPacketCodec.encodeFrame(
+            envelope: envelope,
+            payload: payload)
+
+        replayBuffer.buffer(
+            sampleSeq: envelope.packet.sequenceNumber,
+            frame: frame,
+            activeSessionId: activeSessionId)
+
+        let requiresSecureChannel = connectionPlan?.requireEngineSecureChannel ?? true
+        if requiresSecureChannel && secureSession == nil {
+            return
+        }
+
+        try sendPayload(channel: ClientQuicChannel.sample.rawValue, payload: frame)
     }
 
     private func sendPayload(channel: UInt8, payload: Data) throws {
@@ -101,6 +135,7 @@ actor QuicTransportClient {
         guard secureSession != nil else {
             throw NSError(domain: "QuicTransportClient", code: 2005, userInfo: [NSLocalizedDescriptionKey: "Secure session is not established"])
         }
+
         try sendSecurePayload(payloadChannel: Int(channel), payload: payload)
     }
 
@@ -109,19 +144,15 @@ actor QuicTransportClient {
             throw NSError(domain: "QuicTransportClient", code: 2006, userInfo: [NSLocalizedDescriptionKey: "Missing secure session"])
         }
 
-        let cipher = try EngineSecureChannelCrypto.encrypt(keys: secureSession, counter: outboundCounter, plaintext: payload)
+        let envelope = try ClientSecurePayloadCodec.encode(
+            payloadChannel: payloadChannel,
+            payload: payload,
+            keys: secureSession,
+            counter: outboundCounter)
         outboundCounter += 1
 
-        let envelope = SecureCipherEnvelope(
-            protocol: RoomContractVersions.secureChannelProtocol,
-            payload_channel: payloadChannel,
-            counter: cipher.counter,
-            nonce_b64: cipher.nonce.base64EncodedString(),
-            ciphertext_b64: cipher.ciphertext.base64EncodedString(),
-            tag_b64: cipher.tag.base64EncodedString())
-
         let encryptedPayload = try JSONEncoder().encode(envelope)
-        try sendFrame(channel: 0x03, payload: encryptedPayload)
+        try sendFrame(channel: ClientQuicChannel.secureEnvelope.rawValue, payload: encryptedPayload)
     }
 
     private func performSecureHandshake(
@@ -132,7 +163,7 @@ actor QuicTransportClient {
         let keyPair = EngineSecureChannelCrypto.createEphemeralKeyPair()
         let helloNonce = ULID.generate()
         let createdAtUtc = ISO8601DateFormatter.fractional.string(from: .now)
-        let signingPayload = Self.buildSecureHelloSigningPayload(
+        let signingPayload = EngineSecureChannelCrypto.buildSecureHelloSigningPayload(
             protocolId: RoomContractVersions.secureChannelProtocol,
             sessionId: sessionId,
             scanDeviceId: scanIdentity.deviceId,
@@ -151,7 +182,7 @@ actor QuicTransportClient {
                 "session_id": sessionId,
                 "client_ephemeral_len_bytes": String(keyPair.publicKeyX963.count),
                 "scan_signing_public_key_len_bytes": String(signingPublicKeyLength),
-                "hello_signature_len_bytes": String(signature.count)
+                "hello_signature_len_bytes": String(signature.count),
             ])
 
         let hello = SecureChannelHello(
@@ -166,10 +197,10 @@ actor QuicTransportClient {
             hello_signature_b64: signature.base64EncodedString())
 
         let helloPayload = try JSONEncoder().encode(hello)
-        try sendFrame(channel: 0x01, payload: helloPayload)
+        try sendFrame(channel: ClientQuicChannel.control.rawValue, payload: helloPayload)
 
         let ackFrame = try await readFrame(connection: connection)
-        guard ackFrame.channel == 0x01 else {
+        guard ackFrame.channel == ClientQuicChannel.control.rawValue else {
             throw NSError(domain: "QuicTransportClient", code: 2002, userInfo: [NSLocalizedDescriptionKey: "Expected secure handshake ack"])
         }
 
@@ -188,7 +219,7 @@ actor QuicTransportClient {
             fields: [
                 "session_id": sessionId,
                 "ack_salt_len_bytes": String(salt.count),
-                "server_ephemeral_len_bytes": String(peerPublicKey.count)
+                "server_ephemeral_len_bytes": String(peerPublicKey.count),
             ])
         let keys = try EngineSecureChannelCrypto.deriveSessionKeys(
             localKeyPair: keyPair,
@@ -200,36 +231,12 @@ actor QuicTransportClient {
         inboundCounter = -1
     }
 
-    private static func buildSecureHelloSigningPayload(
-        protocolId: String,
-        sessionId: String,
-        scanDeviceId: String,
-        scanCertFingerprintSha256: String,
-        helloNonce: String,
-        clientEphemeralPublicKeyB64: String,
-        scanSigningPublicKeyB64: String
-    ) -> Data {
-        let canonical = [
-            protocolId,
-            sessionId,
-            scanDeviceId,
-            scanCertFingerprintSha256.lowercased(),
-            helloNonce,
-            clientEphemeralPublicKeyB64,
-            scanSigningPublicKeyB64
-        ].joined(separator: "\n")
-        return Data(canonical.utf8)
-    }
-
     private func sendFrame(channel: UInt8, payload: Data) throws {
         guard let connection else {
             throw NSError(domain: "QuicTransportClient", code: 2001, userInfo: [NSLocalizedDescriptionKey: "No active QUIC connection"])
         }
 
-        var frame = Data([channel])
-        var payloadSize = UInt32(payload.count).bigEndian
-        withUnsafeBytes(of: &payloadSize) { frame.append(contentsOf: $0) }
-        frame.append(payload)
+        let frame = ClientQuicFrameCodec.encodeFrame(channel: channel, payload: payload)
         let sessionId = activeSessionId
 
         connection.send(content: frame, completion: .contentProcessed { error in
@@ -239,7 +246,7 @@ actor QuicTransportClient {
                     level: "error",
                     fields: [
                         "session_id": sessionId,
-                        "error": error.localizedDescription
+                        "error": error.localizedDescription,
                     ])
                 Task { await self.handleConnectionFailure(error) }
             }
@@ -270,13 +277,8 @@ actor QuicTransportClient {
             let chunk = try await readChunk(connection: connection)
             buffer.append(chunk)
 
-            if buffer.count >= 5 {
-                let channel = buffer[0]
-                let length = buffer.dropFirst().prefix(4).reduce(0) { ($0 << 8) | UInt32($1) }
-                let total = 5 + Int(length)
-                if buffer.count >= total {
-                    return (channel, buffer.subdata(in: 5..<total))
-                }
+            if let frame = ClientQuicFrameCodec.decodeNextFrame(from: &buffer) {
+                return (frame.channel, frame.payload)
             }
         }
     }
@@ -318,7 +320,7 @@ actor QuicTransportClient {
                     level: "error",
                     fields: [
                         "session_id": activeSessionId,
-                        "error": error.localizedDescription
+                        "error": error.localizedDescription,
                     ])
                 await handleConnectionFailure(error)
                 break
@@ -328,30 +330,21 @@ actor QuicTransportClient {
 
     private func processBufferedFrames() async throws {
         while true {
-            guard receiveBuffer.count >= 5 else {
+            guard let frame = ClientQuicFrameCodec.decodeNextFrame(from: &receiveBuffer) else {
                 return
             }
 
-            let channel = receiveBuffer[0]
-            let length = receiveBuffer.dropFirst().prefix(4).reduce(0) { ($0 << 8) | UInt32($1) }
-            let total = 5 + Int(length)
-            guard receiveBuffer.count >= total else {
-                return
-            }
-
-            let payload = receiveBuffer.subdata(in: 5..<total)
-            receiveBuffer.removeSubrange(0..<total)
-            try await handleInboundFrame(channel: channel, payload: payload)
+            try await handleInboundFrame(channel: frame.channel, payload: frame.payload)
         }
     }
 
     private func handleInboundFrame(channel: UInt8, payload: Data) async throws {
-        if channel == 0x03 {
+        if channel == ClientQuicChannel.secureEnvelope.rawValue {
             try await handleSecureEnvelope(payload: payload)
             return
         }
 
-        if channel == 0x01 {
+        if channel == ClientQuicChannel.control.rawValue {
             try await handleControlPayload(payload)
         }
     }
@@ -362,103 +355,46 @@ actor QuicTransportClient {
         }
 
         let envelope = try JSONDecoder().decode(SecureCipherEnvelope.self, from: payload)
-        guard envelope.protocol == RoomContractVersions.secureChannelProtocol else {
-            return
-        }
-
-        guard envelope.counter > inboundCounter else {
-            return
-        }
-
-        guard let nonce = Data(base64Encoded: envelope.nonce_b64),
-              let ciphertext = Data(base64Encoded: envelope.ciphertext_b64),
-              let tag = Data(base64Encoded: envelope.tag_b64)
+        guard let opened = try ClientSecurePayloadCodec.open(
+            envelope,
+            keys: secureSession,
+            minimumCounterExclusive: inboundCounter)
         else {
             return
         }
 
-        let plaintext = try EngineSecureChannelCrypto.decrypt(
-            keys: secureSession,
-            nonce: nonce,
-            ciphertext: ciphertext,
-            tag: tag)
-        inboundCounter = envelope.counter
+        inboundCounter = opened.counter
 
-        if envelope.payload_channel == 0x01 {
-            try await handleControlPayload(plaintext)
+        if opened.payloadChannel == Int(ClientQuicChannel.control.rawValue) {
+            try await handleControlPayload(opened.payload)
         }
     }
 
     private func handleControlPayload(_ payload: Data) async throws {
-        if let checkpoint = try? JSONDecoder().decode(ResumeCheckpoint.self, from: payload),
-           checkpoint.session_id == activeSessionId
-        {
-            lastAckedSampleSeq = max(lastAckedSampleSeq, checkpoint.last_acked_sample_seq)
-            trimReplayBuffer(ackedThrough: lastAckedSampleSeq)
-
-            if checkpoint.stream_id == "desktop-resume" {
-                try replayBufferedSamples(after: checkpoint.last_acked_sample_seq)
-            }
+        if let controlPayloadHandler, await controlPayloadHandler(payload) {
             return
         }
 
-        if let hint = try? JSONDecoder().decode(BackpressureHint.self, from: payload),
-           let backpressureHandler
+        switch ClientQuicSessionPolicy.interpretControlPayload(
+            payload,
+            replayBuffer: &replayBuffer,
+            activeSessionId: activeSessionId)
         {
-            await backpressureHandler(hint)
-        }
-    }
-
-    private func resetReplayBuffer(for sessionId: String) {
-        bufferedSampleSessionId = sessionId
-        bufferedSampleFrames.removeAll(keepingCapacity: true)
-        bufferedSampleOrder.removeAll(keepingCapacity: true)
-        lastAckedSampleSeq = -1
-    }
-
-    private func bufferSampleFrame(sampleSeq: Int64, frame: Data) {
-        if bufferedSampleSessionId != activeSessionId {
-            resetReplayBuffer(for: activeSessionId)
-        }
-
-        if bufferedSampleFrames[sampleSeq] == nil {
-            bufferedSampleOrder.append(sampleSeq)
-        }
-
-        bufferedSampleFrames[sampleSeq] = frame
-        trimReplayBuffer(ackedThrough: lastAckedSampleSeq)
-
-        while bufferedSampleOrder.count > maxBufferedSampleFrames {
-            let oldest = bufferedSampleOrder.removeFirst()
-            bufferedSampleFrames.removeValue(forKey: oldest)
-        }
-    }
-
-    private func trimReplayBuffer(ackedThrough ackedSampleSeq: Int64) {
-        guard ackedSampleSeq >= 0 else { return }
-        bufferedSampleOrder.removeAll { seq in
-            if seq <= ackedSampleSeq {
-                bufferedSampleFrames.removeValue(forKey: seq)
-                return true
+        case let .replayFrames(frames):
+            for frame in frames {
+                try sendPayload(channel: ClientQuicChannel.sample.rawValue, payload: frame)
             }
-
-            return false
-        }
-    }
-
-    private func replayBufferedSamples(after ackedSampleSeq: Int64) throws {
-        guard !bufferedSampleOrder.isEmpty else { return }
-        let pending = bufferedSampleOrder
-            .filter { $0 > ackedSampleSeq }
-            .sorted()
-
-        for seq in pending {
-            guard let frame = bufferedSampleFrames[seq] else { continue }
-            try sendPayload(channel: 0x02, payload: frame)
+        case let .backpressureHint(hint):
+            if let backpressureHandler {
+                await backpressureHandler(hint)
+            }
+        case nil:
+            return
         }
     }
 
     private func establishConnection(plan: ConnectionPlan, isReconnect: Bool) async throws {
+        sessionState = ClientQuicSessionPolicy.stateForConnectStart(isReconnect: isReconnect)
         let quicOptions = NWProtocolQUIC.Options(alpn: ["provinode-room-v1"])
         if let scanClientMtlsIdentity = plan.scanClientMtlsIdentity {
             let identity = try Self.importPkcs12Identity(
@@ -501,9 +437,10 @@ actor QuicTransportClient {
         try await waitUntilReadyAndStart(connection)
 
         self.connection = connection
-        self.activeSessionId = plan.sessionId
-        self.receiveBuffer = Data()
-        self.inboundCounter = -1
+        sessionState = ClientQuicSessionPolicy.stateForConnectionEstablished()
+        activeSessionId = plan.sessionId
+        receiveBuffer = Data()
+        inboundCounter = -1
         if plan.requireEngineSecureChannel {
             try await performSecureHandshake(
                 connection: connection,
@@ -516,27 +453,33 @@ actor QuicTransportClient {
 
         startReceiveLoop(connection: connection)
 
-        let resumeCheckpoint = ResumeCheckpoint(
-            session_id: plan.sessionId,
-            last_acked_sample_seq: lastAckedSampleSeq,
-            captured_at_utc: ISO8601DateFormatter.fractional.string(from: .now),
-            stream_id: isReconnect ? "scan-reconnect-\(ULID.generate())" : "scan-\(ULID.generate())")
+        let resumeCheckpoint = ClientQuicSessionPolicy.makeResumeCheckpoint(
+            sessionId: plan.sessionId,
+            lastAckedSampleSeq: replayBuffer.lastAckedSampleSeq,
+            capturedAtUtc: ISO8601DateFormatter.fractional.string(from: .now),
+            streamId: ClientQuicSessionPolicy.makeResumeStreamId(
+                isReconnect: isReconnect,
+                uniqueSuffix: ULID.generate()))
         try sendControl(resumeCheckpoint)
     }
 
     private func handleConnectionFailure(_ error: Error) async {
-        guard connectionPlan != nil else {
+        guard ClientQuicSessionPolicy.shouldAttemptReconnect(
+            hasConnectionPlan: connectionPlan != nil,
+            reconnectInFlight: reconnectTask != nil)
+        else {
             return
         }
 
-        if reconnectTask != nil {
-            return
+        if !activeSessionId.isEmpty, let lifecycleEventHandler {
+            await lifecycleEventHandler(.reconnecting(sessionId: activeSessionId))
         }
-
         closeConnection(resetReplayState: false, clearPlan: false)
         guard let plan = connectionPlan else {
             return
         }
+
+        sessionState = .reconnecting
 
         reconnectTask = Task { [weak self] in
             guard let self else { return }
@@ -547,15 +490,13 @@ actor QuicTransportClient {
     private func attemptReconnect(plan: ConnectionPlan) async {
         defer { reconnectTask = nil }
 
-        let maxAttempts = 5
-        for attempt in 1...maxAttempts {
+        for reconnectAttempt in ClientQuicSessionPolicy.reconnectAttempts() {
             if Task.isCancelled {
                 return
             }
 
-            let delayNs = UInt64(pow(2.0, Double(attempt - 1)) * 250_000_000)
-            if attempt > 1 {
-                try? await Task.sleep(nanoseconds: delayNs)
+            if reconnectAttempt.delayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: reconnectAttempt.delayNanoseconds)
             }
 
             do {
@@ -567,11 +508,13 @@ actor QuicTransportClient {
                     level: "error",
                     fields: [
                         "session_id": activeSessionId,
-                        "attempt": String(attempt),
-                        "error": error.localizedDescription
+                        "attempt": String(reconnectAttempt.attempt),
+                        "error": error.localizedDescription,
                     ])
             }
         }
+
+        sessionState = .disconnected
     }
 
     private func closeConnection(resetReplayState: Bool, clearPlan: Bool) {
@@ -594,12 +537,18 @@ actor QuicTransportClient {
         }
 
         if resetReplayState {
-            bufferedSampleSessionId = ""
-            bufferedSampleFrames.removeAll(keepingCapacity: false)
-            bufferedSampleOrder.removeAll(keepingCapacity: false)
-            lastAckedSampleSeq = -1
+            replayBuffer.clear()
         }
+
+        sessionState = ClientQuicSessionPolicy.stateForClosedConnection(
+            clearPlan: clearPlan,
+            reconnectPending: !clearPlan && reconnectTask != nil)
     }
+}
+
+enum QuicTransportLifecycleEvent: Sendable {
+    case reconnecting(sessionId: String)
+    case disconnected(sessionId: String)
 }
 
 private struct ConnectionPlan: Sendable {

@@ -1,6 +1,7 @@
 import ARKit
 import CoreImage
 import Foundation
+import LinnaeusEngineClientSdkApple
 import ProvinodeRoomContracts
 import UIKit
 
@@ -14,6 +15,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private let sequencer = SampleSequencer()
     private let recorder: SessionRecorder
     private let transport: QuicTransportClient?
+    private let remoteVideoStream: RemoteCaptureVideoStreamContext?
     private let sessionId: String
     private let sourceDeviceId: String
     private let sessionMetadata: [String: String]
@@ -28,17 +30,21 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var dropNonKeyframes = false
     private var syntheticTask: Task<Void, Never>?
     private var syntheticStartedAt = Date()
+    private var remoteVideoSequence: Int64 = 0
+    private var lastRemoteVideoCaptureTimeNs: Int64?
 
     init(
         sessionId: String,
         sourceDeviceId: String,
         sessionMetadata: [String: String] = [:],
         recorder: SessionRecorder,
-        transport: QuicTransportClient?
+        transport: QuicTransportClient?,
+        remoteVideoStream: RemoteCaptureVideoStreamContext? = nil
     ) {
         self.session = ARSession()
         self.recorder = recorder
         self.transport = transport
+        self.remoteVideoStream = remoteVideoStream
         self.sessionId = sessionId
         self.sourceDeviceId = sourceDeviceId
         self.sessionMetadata = sessionMetadata
@@ -134,8 +140,14 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 let shouldEmitKeyframe = syntheticTimestamp - self.lastKeyframeTimestamp >= self.keyframeIntervalSec
                 if shouldEmitKeyframe {
                     self.lastKeyframeTimestamp = syntheticTimestamp
-                    let keyframe = Data(repeating: UInt8(self.frameCounter % 255), count: 2048)
-                    await self.emit(kind: .keyframeRgb, captureTimeNs: uptimeNs, payload: keyframe, metadata: ["mime": "image/raw-sim"])
+                    if let keyframe = self.syntheticKeyframePayload(seed: UInt8(self.frameCounter % 255)) {
+                        await self.emit(kind: .keyframeRgb, captureTimeNs: uptimeNs, payload: keyframe, metadata: ["mime": "image/jpeg"])
+                        await self.sendRemoteVideoFrame(
+                            payload: keyframe,
+                            captureTimeNs: uptimeNs,
+                            width: 640,
+                            height: 360)
+                    }
                     self.metrics.keyframeCount += 1
                 }
 
@@ -202,6 +214,11 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         if shouldEmitKeyframe, let keyframePayload = keyframePayload(from: frame.capturedImage) {
             lastKeyframeTimestamp = frame.timestamp
             await emit(kind: .keyframeRgb, captureTimeNs: captureTimeNs, payload: keyframePayload, metadata: ["mime": "image/jpeg"])
+            await sendRemoteVideoFrame(
+                payload: keyframePayload,
+                captureTimeNs: captureTimeNs,
+                width: CVPixelBufferGetWidth(frame.capturedImage),
+                height: CVPixelBufferGetHeight(frame.capturedImage))
             metrics.keyframeCount += 1
         }
 
@@ -266,7 +283,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
         do {
             try await recorder.record(envelope: envelope, payload: payload)
-            if let transport {
+            if let transport, remoteVideoStream == nil {
                 try await transport.sendSample(envelope: envelope, payload: payload)
             }
             metrics.emittedSamples += 1
@@ -283,12 +300,94 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         }
     }
 
+    private func sendRemoteVideoFrame(
+        payload: Data,
+        captureTimeNs: Int64,
+        width: Int,
+        height: Int
+    ) async {
+        guard let transport, let remoteVideoStream else {
+            return
+        }
+
+        let sequenceNumber = remoteVideoSequence
+        remoteVideoSequence += 1
+
+        let durationNs = lastRemoteVideoCaptureTimeNs.map { max(Int64(0), captureTimeNs - $0) }
+        lastRemoteVideoCaptureTimeNs = captureTimeNs
+
+        let checkpoint = sequenceNumber == 0 || sequenceNumber % 20 == 0
+        let discontinuity = sequenceNumber == 0
+        let checkpointId = checkpoint
+            ? "\(remoteVideoStream.sessionId)-\(remoteVideoStream.streamId)-\(sequenceNumber)"
+            : nil
+        // `captureTimestamp` stays in the device-local monotonic domain. The timing projection
+        // carries the current estimate that maps this sample onto the engine-authoritative clock.
+        let packet = ClientRemoteCapturePacketMetadata(
+            sessionId: remoteVideoStream.sessionId,
+            clientDeviceId: remoteVideoStream.clientDeviceId,
+            remoteCaptureNodeId: remoteVideoStream.remoteCaptureNodeId,
+            streamId: remoteVideoStream.streamId,
+            sequenceNumber: sequenceNumber,
+            captureTimestamp: captureTimeNs,
+            timebaseId: remoteVideoStream.timebaseId,
+            syncGroupId: remoteVideoStream.syncGroupId,
+            duration: durationNs,
+            discontinuity: discontinuity,
+            checkpoint: checkpoint,
+            checkpointId: checkpointId,
+            keyFrame: true,
+            timing: await remoteVideoStream.packetTimingProjection(captureTimeNs))
+        let envelope = ClientRemoteCaptureVideoPacketEnvelope(
+            packet: packet,
+            width: width,
+            height: height,
+            payloadEncoding: "jpeg",
+            payloadMimeType: "image/jpeg")
+
+        do {
+            try await transport.sendRemoteCaptureVideoFrame(envelope: envelope, payload: payload)
+        } catch {
+            StructuredLog.emit(
+                event: "capture_emit_remote_video_failed",
+                level: "error",
+                fields: [
+                    "stream_id": remoteVideoStream.streamId,
+                    "sequence_number": String(sequenceNumber),
+                    "session_id": remoteVideoStream.sessionId,
+                    "error": error.localizedDescription
+                ])
+        }
+    }
+
     private func keyframePayload(from pixelBuffer: CVPixelBuffer) -> Data? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
             return nil
         }
         return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8)
+    }
+
+    private func syntheticKeyframePayload(seed: UInt8) -> Data? {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 360))
+        let image = renderer.image { context in
+            UIColor(
+                red: CGFloat(seed) / 255.0,
+                green: 0.3,
+                blue: 0.7,
+                alpha: 1.0)
+                .setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+
+            let text = "Frame \(frameCounter)"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 32, weight: .bold),
+                .foregroundColor: UIColor.white
+            ]
+            text.draw(at: CGPoint(x: 24, y: 24), withAttributes: attributes)
+        }
+
+        return image.jpegData(compressionQuality: 0.8)
     }
 
     private func depthPayload(from depthMap: CVPixelBuffer?) -> Data? {
@@ -408,6 +507,16 @@ private struct MeshAnchorGeometryPayload: Codable {
         case vertices
         case faceIndices = "face_indices"
     }
+}
+
+struct RemoteCaptureVideoStreamContext: Sendable {
+    let remoteCaptureNodeId: String
+    let clientDeviceId: String
+    let sessionId: String
+    let streamId: String
+    let timebaseId: String
+    let syncGroupId: String?
+    let packetTimingProjection: @Sendable (Int64) async -> ClientRemoteNodePacketTimingProjection
 }
 
 private extension simd_float4x4 {

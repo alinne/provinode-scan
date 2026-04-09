@@ -1,4 +1,5 @@
 import Foundation
+import LinnaeusEngineClientSdkApple
 import ProvinodeRoomContracts
 import UIKit
 
@@ -34,6 +35,7 @@ final class CaptureViewModel: ObservableObject {
     private let simulatorDisableEngineSecureChannel: Bool
 
     private var pipeline: RoomCapturePipeline?
+    private var activeRemoteCaptureSession: ActiveRemoteCaptureSession?
     private var simulatorAutomationStarted = false
 
     private struct PreparedPairingSession {
@@ -152,71 +154,18 @@ final class CaptureViewModel: ObservableObject {
     }
 
     func applyPairingQrPayload(_ rawPayload: String) {
-        let trimmed = rawPayload.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            status = "QR payload is empty"
-            return
-        }
-
-        guard let data = trimmed.data(using: .utf8) else {
-            status = "QR payload is not UTF-8"
-            return
-        }
-
         do {
-            let payload = try JSONDecoder().decode(PairingQrPayload.self, from: data)
-            guard let pairingUrl = URL(string: payload.pairing_endpoint) else {
-                status = "QR payload pairing endpoint is invalid"
-                return
-            }
-            guard let pairingHost = pairingUrl.host,
-                  !pairingHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else {
-                status = "QR payload pairing endpoint is missing a host"
-                return
-            }
-            guard pairingUrl.scheme?.lowercased() == "https" else {
-                status = "QR payload pairing endpoint must use https"
-                return
-            }
-            guard isSupportedWireVersion(payload.protocol_version) else {
-                status = "QR payload protocol version is unsupported"
-                return
-            }
-            guard !isExpired(payload.expires_at_utc) else {
-                status = "QR payload has expired. Start a new pairing session."
-                return
-            }
-            guard isValidSha256Hex(payload.desktop_cert_fingerprint_sha256) else {
-                status = "QR payload desktop certificate fingerprint is invalid"
-                return
-            }
-            guard isValidSignaturePayload(payload.signature_b64) else {
-                status = "QR payload signature is missing or invalid"
-                return
-            }
-            guard let quicHostPort = parseHostAndPort(payload.quic_endpoint) else {
-                status = "QR payload QUIC endpoint is invalid"
-                return
-            }
-            guard isValidPort(quicHostPort.port) else {
-                status = "QR payload QUIC endpoint port is invalid"
-                return
-            }
-
-            manualHost = pairingHost
-            manualPort = String(pairingUrl.port ?? 7448)
-            manualPairingFingerprintSha256 = payload.desktop_cert_fingerprint_sha256.lowercased()
-            pairingCode = payload.pairing_code
-            pairingNonce = payload.pairing_nonce
-
-            manualHost = quicHostPort.host
-            manualQuicPort = String(quicHostPort.port)
-
+            let result = try ClientSessionPreparation.importPairingQrPayload(rawPayload)
+            manualHost = result.quicHost
+            manualPort = String(result.pairingPort)
+            manualQuicPort = String(result.quicPort)
+            manualPairingFingerprintSha256 = result.pairingFingerprintSha256
+            pairingCode = result.pairingCode
+            pairingNonce = result.pairingNonce
             selectedEndpoint = nil
             status = "QR payload imported"
         } catch {
-            status = "QR payload parse failed: \(error.localizedDescription)"
+            status = error.localizedDescription
         }
     }
 
@@ -263,6 +212,7 @@ final class CaptureViewModel: ObservableObject {
 
         let sessionId = simulatorSessionIdOverride ?? ULID.generate()
         var activeTransport: QuicTransportClient?
+        var remoteVideoStream: RemoteCaptureVideoStreamContext?
         let sessionTraceparent = ScanTraceContext.makeTraceparent()
         var sessionMetadata = Self.makeSessionMetadata(
             sessionId: sessionId,
@@ -298,6 +248,25 @@ final class CaptureViewModel: ObservableObject {
                         requireEngineSecureChannel: !simulatorDisableEngineSecureChannel)
                     status = "Secure QUIC connected"
                     activeTransport = transport
+
+                    do {
+                        let remoteCaptureSession = try await startRemoteCaptureVideoSession(
+                            transport: transport,
+                            sessionId: sessionId,
+                            endpoint: endpoint,
+                            trustedPeer: trustedPeer)
+                        activeRemoteCaptureSession = remoteCaptureSession
+                        remoteVideoStream = remoteCaptureSession.videoStream
+                        status = "Remote capture video session ready"
+                    } catch {
+                        status = "Remote capture session failed, recording locally only: \(error.localizedDescription)"
+                        activeRemoteCaptureSession = nil
+                        remoteVideoStream = nil
+                        activeTransport = nil
+                        await transport.setControlPayloadHandler(nil)
+                        await transport.setLifecycleEventHandler(nil)
+                        await transport.disconnect()
+                    }
                 } catch {
                     status = "QUIC connect failed, retrying while recording locally: \(error.localizedDescription)"
                     await transport.disconnect()
@@ -316,7 +285,8 @@ final class CaptureViewModel: ObservableObject {
             sourceDeviceId: scanIdentity.deviceId,
             sessionMetadata: sessionMetadata,
             recorder: recorder,
-            transport: activeTransport)
+            transport: activeTransport,
+            remoteVideoStream: remoteVideoStream)
         self.pipeline = capturePipeline
 
         await transport.setBackpressureHandler { [weak self] hint in
@@ -339,7 +309,13 @@ final class CaptureViewModel: ObservableObject {
             }
         } catch {
             status = "Capture start failed: \(error.localizedDescription)"
+            if let activeRemoteCaptureSession {
+                await stopRemoteCaptureVideoSession(activeRemoteCaptureSession)
+            }
+            await transport.setControlPayloadHandler(nil)
+            await transport.setLifecycleEventHandler(nil)
             await transport.disconnect()
+            activeRemoteCaptureSession = nil
             self.pipeline = nil
         }
     }
@@ -355,7 +331,14 @@ final class CaptureViewModel: ObservableObject {
             status = "Capture finalize failed: \(error.localizedDescription)"
         }
 
+        if let activeRemoteCaptureSession {
+            await stopRemoteCaptureVideoSession(activeRemoteCaptureSession)
+        }
+
+        await transport.setControlPayloadHandler(nil)
+        await transport.setLifecycleEventHandler(nil)
         await transport.disconnect()
+        activeRemoteCaptureSession = nil
         self.pipeline = nil
         isCapturing = false
     }
@@ -386,31 +369,17 @@ final class CaptureViewModel: ObservableObject {
     }
 
     private func resolvedPairingEndpoint() -> PairingEndpoint? {
-        if let selectedEndpoint {
-            return selectedEndpoint
-        }
-
-        guard !manualHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-
-        let port = Int(manualPort) ?? 7448
-        let fingerprint = manualPairingFingerprintSha256
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        return PairingEndpoint(
-            host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: port,
-            quicPort: Int(manualQuicPort) ?? 7447,
-            pairingScheme: "https",
-            pairingCertFingerprintSha256: fingerprint.isEmpty ? nil : fingerprint,
-            displayName: "Manual endpoint",
-            desktopDeviceId: "manual-endpoint")
+        ClientSessionPreparation.resolvePairingEndpoint(
+            selectedEndpoint: selectedEndpoint,
+            manualHost: manualHost,
+            manualPort: manualPort,
+            manualQuicPort: manualQuicPort,
+            manualPairingFingerprintSha256: manualPairingFingerprintSha256)
     }
 
     private func preparePairingSession(endpoint: PairingEndpoint) async throws -> PreparedPairingSession {
         let activeStatus = try await pairingService.getActivePairingSession(endpoint: endpoint)
-        if activeStatus.session != nil || activeStatus.lockoutUntilUtc != nil {
+        if !ClientSessionPreparation.shouldStartPairingSession(for: activeStatus) {
             return PreparedPairingSession(status: activeStatus, startedNewSession: false)
         }
 
@@ -419,33 +388,11 @@ final class CaptureViewModel: ObservableObject {
     }
 
     private func resolvedStreamingEndpoint() -> PairingEndpoint? {
-        if let selectedEndpoint {
-            return PairingEndpoint(
-                host: selectedEndpoint.host,
-                port: selectedEndpoint.quicPort,
-                quicPort: selectedEndpoint.quicPort,
-                pairingScheme: selectedEndpoint.pairingScheme,
-                pairingCertFingerprintSha256: selectedEndpoint.pairingCertFingerprintSha256,
-                displayName: selectedEndpoint.displayName,
-                desktopDeviceId: selectedEndpoint.desktopDeviceId)
-        }
-
-        guard !manualHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-
-        let manualFingerprint = manualPairingFingerprintSha256
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let quicPort = Int(manualQuicPort) ?? 7447
-        return PairingEndpoint(
-            host: manualHost.trimmingCharacters(in: .whitespacesAndNewlines),
-            port: quicPort,
-            quicPort: quicPort,
-            pairingScheme: "https",
-            pairingCertFingerprintSha256: manualFingerprint.isEmpty ? nil : manualFingerprint,
-            displayName: "Manual endpoint",
-            desktopDeviceId: "manual-endpoint")
+        ClientSessionPreparation.resolveStreamingEndpoint(
+            selectedEndpoint: selectedEndpoint,
+            manualHost: manualHost,
+            manualQuicPort: manualQuicPort,
+            manualPairingFingerprintSha256: manualPairingFingerprintSha256)
     }
 
     private func trustedPeer(for endpoint: PairingEndpoint) async -> TrustRecord? {
@@ -470,81 +417,6 @@ final class CaptureViewModel: ObservableObject {
 
     private func applyBackpressureHint(_ hint: BackpressureHint) {
         pipeline?.applyBackpressureHint(hint)
-    }
-
-    private func parseHostAndPort(_ value: String) -> (host: String, port: Int)? {
-        if let asUrl = URL(string: value),
-           let host = asUrl.host {
-            return (host, asUrl.port ?? 7447)
-        }
-
-        let parts = value.split(separator: ":", omittingEmptySubsequences: true)
-        guard parts.count == 2, let port = Int(parts[1]) else {
-            return nil
-        }
-
-        return (String(parts[0]), port)
-    }
-
-    private func isValidPort(_ port: Int) -> Bool {
-        (1...65535).contains(port)
-    }
-
-    private func isExpired(_ expiresAtUtc: String) -> Bool {
-        guard let expiresAt = parseIso8601Utc(expiresAtUtc) else {
-            return true
-        }
-
-        return expiresAt <= Date()
-    }
-
-    private func isSupportedWireVersion(_ version: String) -> Bool {
-        guard let major = version.split(separator: ".", maxSplits: 1).first,
-              major == "1"
-        else {
-            return false
-        }
-
-        return true
-    }
-
-    private func isValidSha256Hex(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count == 64 else {
-            return false
-        }
-
-        return trimmed.unicodeScalars.allSatisfy { scalar in
-            switch scalar.value {
-            case 48...57, 65...70, 97...102:
-                return true
-            default:
-                return false
-            }
-        }
-    }
-
-    private func parseIso8601Utc(_ value: String) -> Date? {
-        let internet = ISO8601DateFormatter()
-        internet.formatOptions = [.withInternetDateTime]
-        if let parsed = internet.date(from: value) {
-            return parsed
-        }
-
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: value)
-    }
-
-    private func isValidSignaturePayload(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let decoded = Data(base64Encoded: trimmed)
-        else {
-            return false
-        }
-
-        return decoded.count == 32
     }
 
     private func runSimulatorAutomationFlow() async {
@@ -662,5 +534,385 @@ final class CaptureViewModel: ObservableObject {
         default:
             return false
         }
+    }
+
+    private func startRemoteCaptureVideoSession(
+        transport: QuicTransportClient,
+        sessionId: String,
+        endpoint: PairingEndpoint,
+        trustedPeer: TrustRecord
+    ) async throws -> ActiveRemoteCaptureSession {
+        let controlPlane = RemoteCaptureControlPlane()
+        await transport.setControlPayloadHandler { payload in
+            await controlPlane.handleInboundPayload(payload)
+        }
+        await transport.setLifecycleEventHandler { event in
+            await controlPlane.handleTransportLifecycleEvent(event)
+        }
+
+        let advertisement = makeRemoteCaptureAdvertisement(
+            sessionId: sessionId,
+            endpoint: endpoint,
+            trustedPeer: trustedPeer)
+        let advertisementMessage = ClientRemoteCaptureControlCodec.makeAdvertisementMessage(
+            advertisement,
+            emittedAtUtc: Self.remoteCaptureTimestamp())
+        try await transport.sendControl(advertisementMessage)
+
+        let registration = try await awaitRemoteCaptureRegistration(controlPlane)
+        let remoteCaptureNodeId = registration.remoteCaptureNodeId
+
+        let openGeneration = await controlPlane.currentSessionControlGeneration()
+        let openRequest = ClientRemoteCaptureSessionControl(
+            clientDeviceId: scanIdentity.deviceId,
+            remoteCaptureNodeId: remoteCaptureNodeId,
+            sessionId: sessionId,
+            action: .open,
+            requestedAtUtc: Self.remoteCaptureTimestamp())
+        let openMessage = ClientRemoteCaptureControlCodec.makeSessionControlMessage(
+            openRequest,
+            emittedAtUtc: Self.remoteCaptureTimestamp())
+        try await transport.sendControl(openMessage)
+
+        let opened = try await awaitRemoteCaptureSessionControlResult(
+            controlPlane,
+            afterGeneration: openGeneration)
+        guard opened.accepted else {
+            throw NSError(
+                domain: "CaptureViewModel",
+                code: 3101,
+                userInfo: [NSLocalizedDescriptionKey: opened.reasonText ?? "Remote capture session open was rejected."])
+        }
+
+        let startGeneration = await controlPlane.currentSessionControlGeneration()
+        let startRequest = ClientRemoteCaptureSessionControl(
+            clientDeviceId: scanIdentity.deviceId,
+            remoteCaptureNodeId: remoteCaptureNodeId,
+            sessionId: sessionId,
+            action: .start,
+            streamIds: [Self.remoteVideoStreamId],
+            requestedAtUtc: Self.remoteCaptureTimestamp())
+        let startMessage = ClientRemoteCaptureControlCodec.makeSessionControlMessage(
+            startRequest,
+            emittedAtUtc: Self.remoteCaptureTimestamp())
+        try await transport.sendControl(startMessage)
+
+        let started = try await awaitRemoteCaptureSessionControlResult(
+            controlPlane,
+            afterGeneration: startGeneration)
+        guard started.accepted else {
+            throw NSError(
+                domain: "CaptureViewModel",
+                code: 3102,
+                userInfo: [NSLocalizedDescriptionKey: started.reasonText ?? "Remote capture video start was rejected."])
+        }
+
+        let activeRegistration = started.registration ?? registration
+        let activeStream = activeRegistration.streams.first(where: { $0.streamId == Self.remoteVideoStreamId })
+        let videoStream = RemoteCaptureVideoStreamContext(
+            remoteCaptureNodeId: activeRegistration.remoteCaptureNodeId,
+            clientDeviceId: scanIdentity.deviceId,
+            sessionId: sessionId,
+            streamId: Self.remoteVideoStreamId,
+            timebaseId: activeStream?.timebase.timebaseId ?? Self.remoteVideoTimebaseId,
+            syncGroupId: activeStream?.syncGroupId ?? Self.remoteVideoSyncGroupId,
+            packetTimingProjection: { localCaptureTicks in
+                await controlPlane.packetTimingProjection(localCaptureTicks: localCaptureTicks)
+            })
+
+        return ActiveRemoteCaptureSession(
+            controlPlane: controlPlane,
+            videoStream: videoStream)
+    }
+
+    private func stopRemoteCaptureVideoSession(_ session: ActiveRemoteCaptureSession) async {
+        do {
+            let stopGeneration = await session.controlPlane.currentSessionControlGeneration()
+            let stopRequest = ClientRemoteCaptureSessionControl(
+                clientDeviceId: scanIdentity.deviceId,
+                remoteCaptureNodeId: session.videoStream.remoteCaptureNodeId,
+                sessionId: session.videoStream.sessionId,
+                action: .stop,
+                streamIds: [session.videoStream.streamId],
+                requestedAtUtc: Self.remoteCaptureTimestamp())
+            try await transport.sendControl(
+                ClientRemoteCaptureControlCodec.makeSessionControlMessage(
+                    stopRequest,
+                    emittedAtUtc: Self.remoteCaptureTimestamp()))
+            _ = try await awaitRemoteCaptureSessionControlResult(session.controlPlane, afterGeneration: stopGeneration, timeoutSeconds: 2)
+
+            let closeGeneration = await session.controlPlane.currentSessionControlGeneration()
+            let closeRequest = ClientRemoteCaptureSessionControl(
+                clientDeviceId: scanIdentity.deviceId,
+                remoteCaptureNodeId: session.videoStream.remoteCaptureNodeId,
+                sessionId: session.videoStream.sessionId,
+                action: .close,
+                requestedAtUtc: Self.remoteCaptureTimestamp())
+            try await transport.sendControl(
+                ClientRemoteCaptureControlCodec.makeSessionControlMessage(
+                    closeRequest,
+                    emittedAtUtc: Self.remoteCaptureTimestamp()))
+            _ = try await awaitRemoteCaptureSessionControlResult(session.controlPlane, afterGeneration: closeGeneration, timeoutSeconds: 2)
+        } catch {
+            StructuredLog.emit(
+                event: "remote_capture_session_stop_failed",
+                level: "error",
+                fields: [
+                    "session_id": session.videoStream.sessionId,
+                    "stream_id": session.videoStream.streamId,
+                    "error": error.localizedDescription
+                ])
+        }
+    }
+
+    private func makeRemoteCaptureAdvertisement(
+        sessionId: String,
+        endpoint: PairingEndpoint,
+        trustedPeer: TrustRecord
+    ) -> ClientRemoteCaptureNodeAdvertisement {
+        let timebase = ClientRemoteCaptureTimebaseDescriptor(
+            timebaseId: Self.remoteVideoTimebaseId,
+            kind: .deviceMonotonic,
+            unitsPerSecond: 1_000_000_000,
+            monotonic: true,
+            syncGroupId: Self.remoteVideoSyncGroupId)
+        let videoFormat = ClientRemoteCaptureVideoFormatDescriptor(
+            width: 1920,
+            height: 1080,
+            framesPerSecond: 30,
+            pixelFormat: "420f",
+            encoding: "jpeg",
+            orientation: .unspecified,
+            cameraPosition: .back,
+            intrinsicsAvailable: true)
+        let stream = ClientRemoteCaptureStreamDescriptor(
+            streamId: Self.remoteVideoStreamId,
+            capabilityId: ClientRemoteCaptureCapabilityIds.cameraVideo,
+            displayName: "Rear Camera",
+            mediaKind: .video,
+            state: .advertised,
+            health: ClientRemoteCaptureStreamHealthSummary(
+                healthState: .healthy,
+                available: true,
+                selectedForStreaming: false),
+            timebase: timebase,
+            syncGroupId: Self.remoteVideoSyncGroupId,
+            primary: true,
+            video: videoFormat)
+
+        return ClientRemoteCaptureNodeAdvertisement(
+            clientDeviceId: scanIdentity.deviceId,
+            displayName: UIDevice.current.name,
+            device: ClientRemoteCaptureDeviceDescriptor(
+                platformId: "ios",
+                operatingSystem: UIDevice.current.systemName,
+                operatingSystemVersion: UIDevice.current.systemVersion,
+                appId: Bundle.main.bundleIdentifier ?? "provinode.scan",
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                deviceModel: UIDevice.current.model,
+                deviceName: UIDevice.current.name,
+                deviceClass: "phone",
+                manufacturer: "Apple"),
+            transport: ClientRemoteCaptureTransportDescriptor(
+                transportProtocolId: "transport.quic.secure_capture",
+                transportSessionId: sessionId,
+                secureChannelSessionId: sessionId,
+                pairingPeerId: trustedPeer.peer_device_id,
+                advertisedEndpointId: "\(endpoint.host):\(endpoint.port)"),
+            state: .registered,
+            health: ClientRemoteCaptureNodeHealthSummary(
+                healthState: .healthy,
+                readyForGraphMaterialization: true,
+                advertisedStreamCount: 1,
+                activeStreamCount: 0,
+                degradedStreamCount: 0,
+                unavailableStreamCount: 0),
+            capabilities: [
+                ClientRemoteCaptureCapabilityAdvertisement(
+                    capabilityId: ClientRemoteCaptureCapabilityIds.cameraVideo,
+                    availability: .available,
+                    optional: false,
+                    displayName: "Camera Video",
+                    streamIds: [Self.remoteVideoStreamId],
+                    video: videoFormat)
+            ],
+            streams: [stream],
+            advertisedAtUtc: Self.remoteCaptureTimestamp())
+    }
+
+    private func awaitRemoteCaptureRegistration(
+        _ controlPlane: RemoteCaptureControlPlane,
+        timeoutSeconds: Double = 5
+    ) async throws -> ClientRemoteCaptureNodeRegistration {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            if let registration = await controlPlane.currentRegistration() {
+                return registration
+            }
+
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        throw NSError(
+            domain: "CaptureViewModel",
+            code: 3103,
+            userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for remote capture node registration."])
+    }
+
+    private func awaitRemoteCaptureSessionControlResult(
+        _ controlPlane: RemoteCaptureControlPlane,
+        afterGeneration generation: Int,
+        timeoutSeconds: Double = 5
+    ) async throws -> ClientRemoteCaptureSessionControlResult {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while Date() < deadline {
+            let currentGeneration = await controlPlane.currentSessionControlGeneration()
+            if currentGeneration > generation,
+               let result = await controlPlane.latestSessionControlResult() {
+                return result
+            }
+
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        throw NSError(
+            domain: "CaptureViewModel",
+            code: 3104,
+            userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for remote capture session control result."])
+    }
+
+    private static var remoteVideoStreamId: String { "video-main" }
+    private static var remoteVideoTimebaseId: String { "ios.monotonic.ns" }
+    private static var remoteVideoSyncGroupId: String { "sync-video-main" }
+
+    private static func remoteCaptureTimestamp() -> String {
+        ISO8601DateFormatter.fractional.string(from: .now)
+    }
+}
+
+private struct ActiveRemoteCaptureSession: Sendable {
+    let controlPlane: RemoteCaptureControlPlane
+    let videoStream: RemoteCaptureVideoStreamContext
+}
+
+private actor RemoteCaptureControlPlane {
+    private var stateMachine = ClientRemoteCaptureSessionStateMachine(localMonotonicDomainId: "ios.dispatch.uptime.ns")
+    private var latestControlResultValue: ClientRemoteCaptureSessionControlResult?
+    private var sessionControlGenerationValue = 0
+
+    func handleInboundPayload(_ payload: Data) async -> Bool {
+        guard let message = try? ClientRemoteCaptureControlCodec.decode(payload) else {
+            return false
+        }
+
+        let previousTiming = stateMachine.timingSnapshot
+        if let action = stateMachine.apply(
+            message,
+            localReceiveTicks: Self.monotonicTicks(),
+            observedAtUtc: Self.remoteCaptureTimestamp())
+        {
+            switch action {
+            case .registration:
+                break
+            case .sessionControlResult(let result):
+                latestControlResultValue = result
+                sessionControlGenerationValue += 1
+            }
+        }
+
+        emitTimingTransitionIfNeeded(from: previousTiming, to: stateMachine.timingSnapshot)
+
+        return true
+    }
+
+    func handleTransportLifecycleEvent(_ event: QuicTransportLifecycleEvent) {
+        switch event {
+        case .reconnecting(let sessionId):
+            stateMachine.invalidateTiming(
+                reasonCode: "remote_node.timing.transport_reconnecting",
+                reasonText: "QUIC transport is reconnecting and the current engine timing projection is no longer trusted.",
+                localNowTicks: Self.monotonicTicks())
+            StructuredLog.emit(
+                event: "remote_capture_timing_reset",
+                fields: [
+                    "session_id": sessionId,
+                    "reason_code": "remote_node.timing.transport_reconnecting"
+                ])
+
+        case .disconnected(let sessionId):
+            stateMachine.invalidateTiming(
+                reasonCode: "remote_node.timing.transport_disconnected",
+                reasonText: "QUIC transport disconnected and the current engine timing projection was cleared.",
+                localNowTicks: Self.monotonicTicks())
+            StructuredLog.emit(
+                event: "remote_capture_timing_reset",
+                fields: [
+                    "session_id": sessionId,
+                    "reason_code": "remote_node.timing.transport_disconnected"
+                ])
+        }
+    }
+
+    func currentRegistration() -> ClientRemoteCaptureNodeRegistration? {
+        stateMachine.registration
+    }
+
+    func currentSessionControlGeneration() -> Int {
+        sessionControlGenerationValue
+    }
+
+    func latestSessionControlResult() -> ClientRemoteCaptureSessionControlResult? {
+        latestControlResultValue
+    }
+
+    func packetTimingProjection(localCaptureTicks: Int64) -> ClientRemoteNodePacketTimingProjection {
+        stateMachine.projectPacketTiming(
+            localCaptureTicks: localCaptureTicks,
+            localNowTicks: Self.monotonicTicks())
+    }
+
+    private func emitTimingTransitionIfNeeded(
+        from previous: ClientRemoteNodeTimingSnapshot,
+        to current: ClientRemoteNodeTimingSnapshot
+    ) {
+        guard previous != current else {
+            return
+        }
+
+        StructuredLog.emit(
+            event: "remote_capture_timing_state_changed",
+            fields: [
+                "mapping_state": current.mappingState.rawValue,
+                "lifecycle_state": current.lifecycleState.rawValue,
+                "timing_session_id": current.timingSessionId ?? "",
+                "timing_domain_id": current.timingDomainId ?? "",
+                "timing_authority_id": current.timingAuthorityId ?? "",
+                "correction_generation": String(current.correctionGeneration),
+                "freshness_ms": current.freshnessMs.map(String.init) ?? "",
+                "mapping_age_ms": current.mappingAgeMs.map(String.init) ?? "",
+                "confidence_score": current.confidenceScore.map { String(format: "%.3f", $0) } ?? "",
+                "estimated_drift_ppm": current.estimatedDriftPpm.map { String(format: "%.3f", $0) } ?? "",
+                "error_bound_ms": current.errorBoundMs.map { String(format: "%.3f", $0) } ?? "",
+                "jitter_ms": current.jitterMs.map { String(format: "%.3f", $0) } ?? "",
+                "residual_ms": current.residualMs.map { String(format: "%.3f", $0) } ?? "",
+                "last_reset_reason_code": current.lastResetReasonCode ?? "",
+                "reason_code": current.reasonCode ?? ""
+            ])
+    }
+
+    private static func monotonicTicks() -> Int64 {
+        Int64(DispatchTime.now().uptimeNanoseconds)
+    }
+
+    private static func remoteCaptureTimestamp() -> String {
+        ISO8601DateFormatter.fractional.string(from: .now)
+    }
+}
+
+private extension ISO8601DateFormatter {
+    static var fractional: ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
     }
 }
