@@ -38,11 +38,6 @@ final class CaptureViewModel: ObservableObject {
     private var activeRemoteCaptureSession: ActiveRemoteCaptureSession?
     private var simulatorAutomationStarted = false
 
-    private struct PreparedPairingSession {
-        let status: PairingSessionStatusResponse
-        let startedNewSession: Bool
-    }
-
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         pairingService: (any PairingSessionClient)? = nil
@@ -119,11 +114,9 @@ final class CaptureViewModel: ObservableObject {
         status = "Pairing..."
 
         do {
-            let preparedSession = try await preparePairingSession(endpoint: endpoint)
+            _ = try await pairingService.startPairingSession(endpoint: endpoint)
             guard !pairingCode.isEmpty, !pairingNonce.isEmpty else {
-                status = preparedSession.startedNewSession
-                    ? "Pairing session started. Import the current QR payload, then confirm pairing."
-                    : "Pairing session is active. Import the current QR payload, then confirm pairing."
+                status = "Pairing session ready. Import the current QR payload, then confirm pairing."
                 return
             }
 

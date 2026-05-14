@@ -3,15 +3,308 @@ import ProvinodeRoomContracts
 import XCTest
 @testable import ProvinodeScan
 
+final class EngineRoomAuthorityClientTests: XCTestCase {
+    func testStartPairingUsesEngineAuthorityRoute() async throws {
+        let transport = StubPairingTransport { _ in
+            PairingTransportResponse(
+                data: Data(Self.sessionStatusJson(qrAvailable: true).utf8),
+                response: Self.response(
+                    path: "/engine/v1/production-space/rooms/default-room/authority/pairing/start",
+                    statusCode: 200,
+                    contentType: "application/json"))
+        }
+
+        let client = EngineRoomAuthorityClient(
+            transport: transport,
+            traceparentProvider: { Self.traceparent })
+
+        let result = try await client.startPairing(endpoint: Self.endpoint())
+
+        let request = try XCTUnwrap(await transport.capturedRequest())
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "traceparent"), Self.traceparent)
+        XCTAssertEqual(components.path, "/engine/v1/production-space/rooms/default-room/authority/pairing/start")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "output_mode" })?.value, "safe")
+        XCTAssertEqual(result.session?.desktopDeviceId, "desktop-1")
+        XCTAssertEqual(result.pairingQrAvailable, true)
+    }
+
+    func testGetActivePairingUsesEngineAuthorityRoute() async throws {
+        let transport = StubPairingTransport { _ in
+            PairingTransportResponse(
+                data: Data(Self.sessionStatusJson(qrAvailable: false).utf8),
+                response: Self.response(
+                    path: "/engine/v1/production-space/rooms/default-room/authority/pairing/active",
+                    statusCode: 200,
+                    contentType: "application/json"))
+        }
+
+        let client = EngineRoomAuthorityClient(
+            transport: transport,
+            traceparentProvider: { Self.traceparent })
+
+        let result = try await client.getActivePairing(endpoint: Self.endpoint())
+
+        let request = try XCTUnwrap(await transport.capturedRequest())
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(components.path, "/engine/v1/production-space/rooms/default-room/authority/pairing/active")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "output_mode" })?.value, "safe")
+        XCTAssertNil(result.session)
+        XCTAssertEqual(result.pairingQrAvailable, false)
+    }
+
+    func testConfirmPairingUsesEngineAuthorityRouteAndRequestBody() async throws {
+        let transport = StubPairingTransport { _ in
+            let data = try JSONEncoder().encode(
+                PairingConfirmResult(
+                    trust_record: Self.trustRecord(deviceId: "desktop-1")))
+            return PairingTransportResponse(
+                data: data,
+                response: Self.response(
+                    path: "/engine/v1/production-space/rooms/default-room/authority/pairing/confirm",
+                    statusCode: 200,
+                    contentType: "application/json"))
+        }
+
+        let client = EngineRoomAuthorityClient(
+            transport: transport,
+            traceparentProvider: { Self.traceparent })
+
+        _ = try await client.confirmPairing(
+            endpoint: Self.endpoint(),
+            requestBody: PairingConfirmRequest(
+                pairing_code: "482915",
+                pairing_confirm: PairingConfirmPayload(
+                    pairing_nonce: "01JNONCEABCDEFGHJKMNPQRSTV",
+                    scan_device_id: "scan-1",
+                    scan_display_name: "Scanner",
+                    scan_cert_fingerprint_sha256: String(repeating: "b", count: 64),
+                    desktop_cert_fingerprint_sha256: String(repeating: "c", count: 64),
+                    confirmed_at_utc: "2099-02-28T12:00:00Z")))
+
+        let request = try XCTUnwrap(await transport.capturedRequest())
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        XCTAssertEqual(components.path, "/engine/v1/production-space/rooms/default-room/authority/pairing/confirm")
+
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["pairing_code"] as? String, "482915")
+        let confirm = try XCTUnwrap(json["pairing_confirm"] as? [String: Any])
+        XCTAssertEqual(confirm["pairing_nonce"] as? String, "01JNONCEABCDEFGHJKMNPQRSTV")
+        XCTAssertEqual(confirm["scan_device_id"] as? String, "scan-1")
+    }
+
+    func testImportCapturedRoomAssetUsesEngineAuthorityRoute() async throws {
+        let transport = StubPairingTransport { _ in
+            PairingTransportResponse(
+                data: Data("{\"accepted\":true}".utf8),
+                response: Self.response(
+                    path: "/engine/v1/production-space/rooms/default-room/authority/captured-assets/import",
+                    statusCode: 200,
+                    contentType: "application/json"))
+        }
+
+        let client = EngineRoomAuthorityClient(
+            transport: transport,
+            traceparentProvider: { Self.traceparent })
+
+        let result = try await client.importCapturedRoomAsset(
+            endpoint: Self.endpoint(),
+            contentType: "application/octet-stream",
+            payload: Data("roomcapture".utf8))
+
+        let request = try XCTUnwrap(await transport.capturedRequest())
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+        XCTAssertEqual(components.path, "/engine/v1/production-space/rooms/default-room/authority/captured-assets/import")
+        XCTAssertEqual(result.rawResponse.statusCode, 200)
+    }
+
+    private static let traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+}
+
 final class PairingServiceTests: XCTestCase {
-    func testStartPairingSessionSendsTraceparentAndDecodesSafeSession() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-start-\(UUID().uuidString)", isDirectory: true)
+    func testStartPairingSessionDelegatesToAuthorityClientAndCachesResponse() async throws {
+        let root = Self.makeRootDirectory(name: "scan-pairing-start-delegate")
         defer { try? FileManager.default.removeItem(at: root) }
 
         let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
+        let authorityClient = StubEngineRoomAuthorityClient(
+            startResponse: Self.activeSessionStatus(qrAvailable: true))
+        let service = PairingService(
+            trustStore: trustStore,
+            authorityClient: authorityClient,
+            activeSessionCacheTtl: 30)
+
+        let started = try await service.startPairingSession(endpoint: Self.endpoint())
+        let cached = try await service.getActivePairingSession(endpoint: Self.endpoint())
+
+        XCTAssertEqual(started.session?.desktopDeviceId, "desktop-1")
+        XCTAssertEqual(cached.session?.desktopDeviceId, "desktop-1")
+        XCTAssertEqual(await authorityClient.startCallCount(), 1)
+        XCTAssertEqual(await authorityClient.activeCallCount(), 0)
+    }
+
+    func testGetActivePairingSessionReusesShortLivedCache() async throws {
+        let root = Self.makeRootDirectory(name: "scan-pairing-active-cache")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let authorityClient = StubEngineRoomAuthorityClient(
+            activeResponse: Self.activeSessionStatus(qrAvailable: true))
+        let service = PairingService(
+            trustStore: trustStore,
+            authorityClient: authorityClient,
+            activeSessionCacheTtl: 30)
+
+        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
+        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
+
+        XCTAssertEqual(await authorityClient.activeCallCount(), 1)
+    }
+
+    func testConfirmPairingDelegatesToAuthorityClientAndPersistsTrustRecord() async throws {
+        let root = Self.makeRootDirectory(name: "scan-pairing-confirm-delegate")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let authorityClient = StubEngineRoomAuthorityClient(
+            confirmResponse: PairingConfirmResult(
+                trust_record: Self.trustRecord(deviceId: "desktop-1")))
+        let service = PairingService(
+            trustStore: trustStore,
+            authorityClient: authorityClient,
+            activeSessionCacheTtl: 30)
+
+        let result = try await service.confirmPairing(
+            endpoint: Self.endpoint(),
+            pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
+            pairingCode: "482915",
+            scanDeviceId: "scan-1",
+            scanDisplayName: "Scanner",
+            scanCertFingerprintSha256: String(repeating: "b", count: 64),
+            desktopCertFingerprintSha256: String(repeating: "c", count: 64))
+
+        XCTAssertEqual(result.trust_record.peer_device_id, "desktop-1")
+        XCTAssertEqual(await authorityClient.confirmCallCount(), 1)
+
+        let requestBody = try XCTUnwrap(await authorityClient.lastConfirmRequestBody())
+        XCTAssertEqual(requestBody.pairing_code, "482915")
+        XCTAssertEqual(requestBody.pairing_confirm.scan_device_id, "scan-1")
+        XCTAssertEqual(requestBody.pairing_confirm.pairing_nonce, "01JNONCEABCDEFGHJKMNPQRSTV")
+
+        let persisted = await trustStore.trustedPeer(deviceId: "desktop-1")
+        XCTAssertEqual(persisted?.peer_display_name, "Room Receiver")
+    }
+
+    func testConfirmPairingInvalidatesCachedSessionState() async throws {
+        let root = Self.makeRootDirectory(name: "scan-pairing-confirm-invalidates")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let authorityClient = StubEngineRoomAuthorityClient(
+            activeResponse: Self.activeSessionStatus(qrAvailable: true),
+            confirmResponse: PairingConfirmResult(
+                trust_record: Self.trustRecord(deviceId: "desktop-1")))
+        let service = PairingService(
+            trustStore: trustStore,
+            authorityClient: authorityClient,
+            activeSessionCacheTtl: 30)
+
+        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
+        _ = try await service.confirmPairing(
+            endpoint: Self.endpoint(),
+            pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
+            pairingCode: "482915",
+            scanDeviceId: "scan-1",
+            scanDisplayName: "Scanner",
+            scanCertFingerprintSha256: String(repeating: "b", count: 64),
+            desktopCertFingerprintSha256: String(repeating: "c", count: 64))
+        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
+
+        XCTAssertEqual(await authorityClient.activeCallCount(), 2)
+        XCTAssertEqual(await authorityClient.confirmCallCount(), 1)
+    }
+
+    func testConfirmPairingSurfacesAuthorityUnavailableFromAuthorityClient() async throws {
+        let root = Self.makeRootDirectory(name: "scan-pairing-confirm-authority-failure")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let authorityClient = StubEngineRoomAuthorityClient(
+            confirmError: .authorityUnavailable(
+                PairingProblemDetails(
+                    type: "https://linnaeus.internal/problems/pairing_authority_unavailable",
+                    title: "Pairing authority unavailable.",
+                    status: 503,
+                    detail: "Desktop pairing authority is unavailable.",
+                    instance: nil,
+                    error: nil,
+                    errorCode: "pairing_authority_unavailable",
+                    message: nil,
+                    recoveryHint: "Retry after the Room host reconnects to engine authority.",
+                    retryable: false,
+                    inFlight: true,
+                    failureBundlePath: nil,
+                    failureCorrelationId: nil,
+                    lockoutUntilUtc: nil,
+                    responseTraceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01")))
+        let service = PairingService(trustStore: trustStore, authorityClient: authorityClient)
+
+        do {
+            _ = try await service.confirmPairing(
+                endpoint: Self.endpoint(),
+                pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
+                pairingCode: "482915",
+                scanDeviceId: "scan-1",
+                scanDisplayName: "Scanner",
+                scanCertFingerprintSha256: String(repeating: "b", count: 64),
+                desktopCertFingerprintSha256: String(repeating: "c", count: 64))
+            XCTFail("Expected authority-unavailable error.")
+        } catch let error as PairingError {
+            guard case let .authorityUnavailable(problem) = error else {
+                return XCTFail("Expected authorityUnavailable error, got \(error)")
+            }
+
+            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_authority_unavailable")
+            XCTAssertTrue(error.inFlight)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Desktop pairing authority is unavailable. Retry after the Room host reconnects to engine authority.")
+        }
+    }
+}
+
+private extension EngineRoomAuthorityClientTests {
+    static func endpoint() -> PairingEndpoint {
+        PairingServiceTests.endpoint()
+    }
+
+    static func response(
+        path: String,
+        statusCode: Int,
+        contentType: String,
+        traceparent: String? = nil
+    ) -> HTTPURLResponse {
+        PairingServiceTests.response(
+            path: path,
+            statusCode: statusCode,
+            contentType: contentType,
+            traceparent: traceparent)
+    }
+
+    static func trustRecord(deviceId: String) -> TrustRecord {
+        PairingServiceTests.trustRecord(deviceId: deviceId)
+    }
+
+    static func sessionStatusJson(qrAvailable: Bool) -> String {
+        if qrAvailable {
+            return """
             {
               "output_safety_mode": "safe",
               "session": {
@@ -28,525 +321,22 @@ final class PairingServiceTests: XCTestCase {
               "expires_in_seconds": 60
             }
             """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(
-                    statusCode: 200,
-                    contentType: "application/json",
-                    traceparent: "00-11111111111111111111111111111111-2222222222222222-01"))
         }
 
-        let traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
-        let service = PairingService(
-            trustStore: trustStore,
-            transport: transport,
-            traceparentProvider: { traceparent })
-
-        let result = try await service.startPairingSession(endpoint: Self.endpoint())
-
-        let capturedRequest = await transport.capturedRequest()
-        let request = try XCTUnwrap(capturedRequest)
-        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json, application/problem+json")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "traceparent"), traceparent)
-        XCTAssertEqual(components.path, "/pairing/start")
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "output_mode" })?.value, "safe")
-        XCTAssertEqual(result.outputSafetyMode, "safe")
-        XCTAssertEqual(result.session?.desktopDeviceId, "desktop-1")
-        XCTAssertEqual(result.session?.remainingAttempts, 4)
-        XCTAssertEqual(result.pairingQrAvailable, true)
-        XCTAssertEqual(
-            result.responseTraceparent,
-            "00-11111111111111111111111111111111-2222222222222222-01")
-    }
-
-    func testGetActivePairingSessionSendsTraceparentAndDecodesInactiveState() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-active-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "output_safety_mode": "safe",
-              "session": null,
-              "lockout_until_utc": null,
-              "pairing_qr_available": false,
-              "expires_in_seconds": 0
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 200, contentType: "application/json"))
-        }
-
-        let traceparent = "00-fedcba9876543210fedcba9876543210-0123456789abcdef-01"
-        let service = PairingService(
-            trustStore: trustStore,
-            transport: transport,
-            traceparentProvider: { traceparent })
-
-        let result = try await service.getActivePairingSession(endpoint: Self.endpoint())
-
-        let capturedRequest = await transport.capturedRequest()
-        let request = try XCTUnwrap(capturedRequest)
-        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
-        XCTAssertEqual(request.httpMethod, "GET")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "traceparent"), traceparent)
-        XCTAssertEqual(components.path, "/pairing/active")
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "output_mode" })?.value, "safe")
-        XCTAssertNil(result.session)
-        XCTAssertEqual(result.pairingQrAvailable, false)
-        XCTAssertEqual(result.expiresInSeconds, 0)
-    }
-
-    func testStartPairingSessionMapsAuthorityUnavailableProblemDetails() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-start-authority-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_authority_unavailable",
-              "title": "Pairing authority unavailable.",
-              "status": 503,
-              "detail": "Room pairing authority is unavailable.",
-              "error_code": "pairing_authority_unavailable",
-              "recovery_hint": "Retry after the Room host reconnects to engine authority.",
-              "retryable": false,
-              "in_flight": true
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 503, contentType: "application/problem+json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.startPairingSession(endpoint: Self.endpoint())
-            XCTFail("Expected start pairing to fail with an authority-unavailable problem.")
-        } catch let error as PairingError {
-            guard case let .authorityUnavailable(problem) = error else {
-                return XCTFail("Expected authorityUnavailable error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_authority_unavailable")
-            XCTAssertTrue(error.inFlight)
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Room pairing authority is unavailable. Retry after the Room host reconnects to engine authority.")
-        }
-    }
-
-    func testGetActivePairingSessionMapsLockedOutProblemDetails() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-active-locked-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_locked",
-              "title": "Pairing is temporarily locked.",
-              "status": 429,
-              "detail": "Repeated invalid confirmation attempts temporarily locked pairing.",
-              "error_code": "pairing_locked",
-              "retryable": true,
-              "lockout_until_utc": "2099-02-28T12:00:00Z"
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 429, contentType: "application/problem+json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
-            XCTFail("Expected active pairing session query to fail with a lockout problem.")
-        } catch let error as PairingError {
-            guard case let .lockedOut(problem) = error else {
-                return XCTFail("Expected lockedOut error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_locked")
-            XCTAssertEqual(problem?.lockoutUntilUtc, "2099-02-28T12:00:00Z")
-            XCTAssertTrue(error.retryable)
-        }
-    }
-
-    func testGetActivePairingSessionReusesShortLivedCache() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-active-cache-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "output_safety_mode": "safe",
-              "session": {
-                "desktop_device_id": "desktop-1",
-                "desktop_display_name": "Room Receiver",
-                "expires_at_utc": "2099-02-28T12:00:00Z",
-                "protocol_version": "1.1",
-                "remaining_attempts": 5,
-                "attempt_limit": 5,
-                "lockout_until_utc": null
-              },
-              "lockout_until_utc": null,
-              "pairing_qr_available": true,
-              "expires_in_seconds": 300
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 200, contentType: "application/json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport, activeSessionCacheTtl: 30)
-
-        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
-        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
-        let sendCount = await transport.sendCount()
-
-        XCTAssertEqual(sendCount, 1)
-    }
-
-    func testConfirmPairingInvalidatesCachedSessionState() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-active-invalidate-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let activeBody = """
+        return """
         {
           "output_safety_mode": "safe",
-          "session": {
-            "desktop_device_id": "desktop-1",
-            "desktop_display_name": "Room Receiver",
-            "expires_at_utc": "2099-02-28T12:00:00Z",
-            "protocol_version": "1.1",
-            "remaining_attempts": 5,
-            "attempt_limit": 5,
-            "lockout_until_utc": null
-          },
+          "session": null,
           "lockout_until_utc": null,
-          "pairing_qr_available": true,
-          "expires_in_seconds": 300
+          "pairing_qr_available": false,
+          "expires_in_seconds": 0
         }
         """
-        let transport = StubPairingTransport { request in
-            switch request.url?.path {
-            case "/pairing/active":
-                return PairingTransportResponse(
-                    data: Data(activeBody.utf8),
-                    response: Self.response(statusCode: 200, contentType: "application/json"))
-            case "/pairing/confirm":
-                let record = TrustRecord(
-                    peer_device_id: "desktop-1",
-                    peer_display_name: "Room Receiver",
-                    peer_cert_fingerprint_sha256: String(repeating: "a", count: 64),
-                    created_at_utc: Self.iso8601Now(),
-                    last_seen_at_utc: Self.iso8601Now(),
-                    status: "trusted",
-                    previous_cert_fingerprints_sha256: nil)
-                let data = try JSONEncoder().encode(PairingConfirmResult(trust_record: record))
-                return PairingTransportResponse(
-                    data: data,
-                    response: Self.response(statusCode: 200, contentType: "application/json"))
-            default:
-                throw PairingError.serverRejected(nil)
-            }
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport, activeSessionCacheTtl: 30)
-
-        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
-        _ = try await service.confirmPairing(
-            endpoint: Self.endpoint(),
-            pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-            pairingCode: "482915",
-            scanDeviceId: "scan-1",
-            scanDisplayName: "Scanner",
-            scanCertFingerprintSha256: String(repeating: "b", count: 64),
-            desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-        _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
-        let sendCount = await transport.sendCount()
-
-        XCTAssertEqual(sendCount, 3)
     }
+}
 
-    func testConfirmPairingSendsTraceparentAndPersistsTrustRecord() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let record = TrustRecord(
-                peer_device_id: "desktop-1",
-                peer_display_name: "Room Receiver",
-                peer_cert_fingerprint_sha256: String(repeating: "a", count: 64),
-                created_at_utc: Self.iso8601Now(),
-                last_seen_at_utc: Self.iso8601Now(),
-                status: "trusted",
-                previous_cert_fingerprints_sha256: nil)
-            let data = try JSONEncoder().encode(PairingConfirmResult(trust_record: record))
-            return PairingTransportResponse(
-                data: data,
-                response: Self.response(statusCode: 200, contentType: "application/json"))
-        }
-
-        let traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
-        let service = PairingService(
-            trustStore: trustStore,
-            transport: transport,
-            traceparentProvider: { traceparent })
-
-        let result = try await service.confirmPairing(
-            endpoint: Self.endpoint(),
-            pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-            pairingCode: "482915",
-            scanDeviceId: "scan-1",
-            scanDisplayName: "Scanner",
-            scanCertFingerprintSha256: String(repeating: "b", count: 64),
-            desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-
-        let capturedRequest = await transport.capturedRequest()
-        let request = try XCTUnwrap(capturedRequest)
-        XCTAssertEqual(request.value(forHTTPHeaderField: "traceparent"), traceparent)
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json, application/problem+json")
-        XCTAssertEqual(result.trust_record.peer_device_id, "desktop-1")
-
-        let persisted = await trustStore.trustedPeer(deviceId: "desktop-1")
-        XCTAssertEqual(persisted?.peer_display_name, "Room Receiver")
-    }
-
-    func testConfirmPairingDecodesProblemDetailsAndMapsLockedOutFailure() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-locked-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_locked",
-              "title": "Pairing is temporarily locked.",
-              "status": 429,
-              "detail": "Repeated invalid confirmation attempts temporarily locked pairing.",
-              "error": "pairing_locked",
-              "error_code": "pairing_locked",
-              "retryable": true,
-              "lockout_until_utc": "2099-02-28T12:00:00Z"
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 429, contentType: "application/problem+json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.confirmPairing(
-                endpoint: Self.endpoint(),
-                pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-                pairingCode: "482915",
-                scanDeviceId: "scan-1",
-                scanDisplayName: "Scanner",
-                scanCertFingerprintSha256: String(repeating: "b", count: 64),
-                desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-            XCTFail("Expected pairing to fail with a lockout problem.")
-        } catch let error as PairingError {
-            guard case let .lockedOut(problem) = error else {
-                return XCTFail("Expected lockedOut error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_locked")
-            XCTAssertEqual(problem?.retryable, true)
-            XCTAssertEqual(problem?.lockoutUntilUtc, "2099-02-28T12:00:00Z")
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Repeated invalid confirmation attempts temporarily locked pairing. Retry after 2099-02-28T12:00:00Z.")
-        }
-    }
-
-    func testConfirmPairingMapsMissingSessionToFailClosedError() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-missing-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_session_not_found",
-              "title": "No active pairing session.",
-              "status": 404,
-              "detail": "The pairing session is missing or already completed.",
-              "error_code": "pairing_session_not_found"
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 404, contentType: "application/problem+json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.confirmPairing(
-                endpoint: Self.endpoint(),
-                pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-                pairingCode: "482915",
-                scanDeviceId: "scan-1",
-                scanDisplayName: "Scanner",
-                scanCertFingerprintSha256: String(repeating: "b", count: 64),
-                desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-            XCTFail("Expected pairing to fail with a missing-session problem.")
-        } catch let error as PairingError {
-            guard case let .sessionUnavailable(problem) = error else {
-                return XCTFail("Expected sessionUnavailable error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_session_not_found")
-            XCTAssertEqual(error.localizedDescription, "The pairing session is missing or already completed.")
-        }
-    }
-
-    func testConfirmPairingMapsAuthorityUnavailableAndPreservesRecoveryMetadata() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-authority-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_authority_unavailable",
-              "title": "Pairing authority unavailable.",
-              "status": 503,
-              "detail": "Desktop pairing authority is unavailable.",
-              "error_code": "pairing_authority_unavailable",
-              "recovery_hint": "Retry after the Room host reconnects to engine authority.",
-              "retryable": false,
-              "in_flight": true
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(
-                    statusCode: 503,
-                    contentType: "application/problem+json",
-                    traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.confirmPairing(
-                endpoint: Self.endpoint(),
-                pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-                pairingCode: "482915",
-                scanDeviceId: "scan-1",
-                scanDisplayName: "Scanner",
-                scanCertFingerprintSha256: String(repeating: "b", count: 64),
-                desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-            XCTFail("Expected pairing to fail with an authority-unavailable problem.")
-        } catch let error as PairingError {
-            guard case let .authorityUnavailable(problem) = error else {
-                return XCTFail("Expected authorityUnavailable error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_authority_unavailable")
-            XCTAssertEqual(problem?.recoveryHint, "Retry after the Room host reconnects to engine authority.")
-            XCTAssertEqual(problem?.inFlight, true)
-            XCTAssertEqual(
-                problem?.responseTraceparent,
-                "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01")
-            XCTAssertFalse(error.retryable)
-            XCTAssertTrue(error.inFlight)
-            XCTAssertEqual(error.recoveryHint, "Retry after the Room host reconnects to engine authority.")
-            XCTAssertEqual(
-                error.diagnosticReference,
-                "trace 00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01")
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Desktop pairing authority is unavailable. Retry after the Room host reconnects to engine authority.")
-        }
-    }
-
-    func testConfirmPairingMapsAttemptLimitReachedSeparatelyFromLockout() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scan-pairing-attempt-limit-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let trustStore = try TrustStore(rootDirectory: root)
-        let transport = StubPairingTransport { _ in
-            let body = """
-            {
-              "type": "https://linnaeus.internal/problems/pairing_attempt_limit_reached",
-              "title": "Pairing attempt limit reached.",
-              "status": 429,
-              "detail": "Too many invalid pairing attempts were submitted for the active session.",
-              "error_code": "pairing_attempt_limit_reached",
-              "recovery_hint": "Wait for the lockout window to expire or start a fresh pairing session.",
-              "retryable": true,
-              "lockout_until_utc": "2099-03-01T12:00:00Z"
-            }
-            """
-
-            return PairingTransportResponse(
-                data: Data(body.utf8),
-                response: Self.response(statusCode: 429, contentType: "application/problem+json"))
-        }
-
-        let service = PairingService(trustStore: trustStore, transport: transport)
-
-        do {
-            _ = try await service.confirmPairing(
-                endpoint: Self.endpoint(),
-                pairingNonce: "01JNONCEABCDEFGHJKMNPQRSTV",
-                pairingCode: "482915",
-                scanDeviceId: "scan-1",
-                scanDisplayName: "Scanner",
-                scanCertFingerprintSha256: String(repeating: "b", count: 64),
-                desktopCertFingerprintSha256: String(repeating: "c", count: 64))
-            XCTFail("Expected pairing to fail with an attempt-limit problem.")
-        } catch let error as PairingError {
-            guard case let .attemptLimitReached(problem) = error else {
-                return XCTFail("Expected attemptLimitReached error, got \(error)")
-            }
-
-            XCTAssertEqual(problem?.effectiveErrorCode, "pairing_attempt_limit_reached")
-            XCTAssertEqual(problem?.retryable, true)
-            XCTAssertEqual(problem?.lockoutUntilUtc, "2099-03-01T12:00:00Z")
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Too many invalid pairing attempts were submitted for the active session. Wait for the lockout window to expire or start a fresh pairing session.")
-        }
-    }
-
-    private static func endpoint() -> PairingEndpoint {
+private extension PairingServiceTests {
+    static func endpoint() -> PairingEndpoint {
         PairingEndpoint(
             host: "192.168.1.44",
             port: 7448,
@@ -557,7 +347,8 @@ final class PairingServiceTests: XCTestCase {
             desktopDeviceId: "desktop-1")
     }
 
-    private static func response(
+    static func response(
+        path: String,
         statusCode: Int,
         contentType: String,
         traceparent: String? = nil
@@ -568,13 +359,45 @@ final class PairingServiceTests: XCTestCase {
         }
 
         return HTTPURLResponse(
-            url: URL(string: "https://192.168.1.44:7448/pairing/confirm")!,
+            url: URL(string: "https://192.168.1.44:7448\(path)")!,
             statusCode: statusCode,
             httpVersion: nil,
             headerFields: headers)!
     }
 
-    private static func iso8601Now() -> String {
+    static func makeRootDirectory(name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name)-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    static func trustRecord(deviceId: String) -> TrustRecord {
+        TrustRecord(
+            peer_device_id: deviceId,
+            peer_display_name: "Room Receiver",
+            peer_cert_fingerprint_sha256: String(repeating: "a", count: 64),
+            created_at_utc: iso8601Now(),
+            last_seen_at_utc: iso8601Now(),
+            status: "trusted",
+            previous_cert_fingerprints_sha256: nil)
+    }
+
+    static func activeSessionStatus(qrAvailable: Bool) -> PairingSessionStatusResponse {
+        PairingSessionStatusResponse(
+            outputSafetyMode: "safe",
+            session: PairingSessionSummary(
+                desktopDeviceId: "desktop-1",
+                desktopDisplayName: "Room Receiver",
+                expiresAtUtc: "2099-02-28T12:00:00Z",
+                protocolVersion: "1.1",
+                remainingAttempts: 5,
+                attemptLimit: 5,
+                lockoutUntilUtc: nil),
+            lockoutUntilUtc: nil,
+            pairingQrAvailable: qrAvailable,
+            expiresInSeconds: 300)
+    }
+
+    static func iso8601Now() -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: .now)
@@ -583,7 +406,6 @@ final class PairingServiceTests: XCTestCase {
 
 private actor StubPairingTransport: PairingRequestTransport {
     private var lastRequest: URLRequest?
-    private var requestCount = 0
     private let responder: @Sendable (URLRequest) throws -> PairingTransportResponse
 
     init(responder: @escaping @Sendable (URLRequest) throws -> PairingTransportResponse) {
@@ -592,15 +414,104 @@ private actor StubPairingTransport: PairingRequestTransport {
 
     func send(_ request: URLRequest, pinnedFingerprintSha256 _: String) async throws -> PairingTransportResponse {
         lastRequest = request
-        requestCount += 1
         return try responder(request)
     }
 
     func capturedRequest() -> URLRequest? {
         lastRequest
     }
+}
 
-    func sendCount() -> Int {
-        requestCount
+private actor StubEngineRoomAuthorityClient: EngineRoomAuthorityClientProtocol {
+    private let startResponse: PairingSessionStatusResponse?
+    private let activeResponse: PairingSessionStatusResponse?
+    private let confirmResponse: PairingConfirmResult?
+    private let startError: PairingError?
+    private let activeError: PairingError?
+    private let confirmError: PairingError?
+
+    private var startCalls = 0
+    private var activeCalls = 0
+    private var confirmCalls = 0
+    private var lastConfirmRequest: PairingConfirmRequest?
+
+    init(
+        startResponse: PairingSessionStatusResponse? = nil,
+        activeResponse: PairingSessionStatusResponse? = nil,
+        confirmResponse: PairingConfirmResult? = nil,
+        startError: PairingError? = nil,
+        activeError: PairingError? = nil,
+        confirmError: PairingError? = nil
+    ) {
+        self.startResponse = startResponse
+        self.activeResponse = activeResponse
+        self.confirmResponse = confirmResponse
+        self.startError = startError
+        self.activeError = activeError
+        self.confirmError = confirmError
+    }
+
+    func startPairing(endpoint _: PairingEndpoint) async throws -> PairingSessionStatusResponse {
+        startCalls += 1
+        if let startError {
+            throw startError
+        }
+
+        guard let startResponse else {
+            throw NSError(domain: "StubEngineRoomAuthorityClient", code: 1)
+        }
+        return startResponse
+    }
+
+    func getActivePairing(endpoint _: PairingEndpoint) async throws -> PairingSessionStatusResponse {
+        activeCalls += 1
+        if let activeError {
+            throw activeError
+        }
+
+        guard let activeResponse else {
+            throw NSError(domain: "StubEngineRoomAuthorityClient", code: 2)
+        }
+        return activeResponse
+    }
+
+    func confirmPairing(
+        endpoint _: PairingEndpoint,
+        requestBody: PairingConfirmRequest
+    ) async throws -> PairingConfirmResult {
+        confirmCalls += 1
+        lastConfirmRequest = requestBody
+        if let confirmError {
+            throw confirmError
+        }
+
+        guard let confirmResponse else {
+            throw NSError(domain: "StubEngineRoomAuthorityClient", code: 3)
+        }
+        return confirmResponse
+    }
+
+    func importCapturedRoomAsset(
+        endpoint _: PairingEndpoint,
+        contentType _: String,
+        payload _: Data
+    ) async throws -> EngineRoomAuthorityImportResponse {
+        throw NSError(domain: "StubEngineRoomAuthorityClient", code: 4)
+    }
+
+    func startCallCount() -> Int {
+        startCalls
+    }
+
+    func activeCallCount() -> Int {
+        activeCalls
+    }
+
+    func confirmCallCount() -> Int {
+        confirmCalls
+    }
+
+    func lastConfirmRequestBody() -> PairingConfirmRequest? {
+        lastConfirmRequest
     }
 }

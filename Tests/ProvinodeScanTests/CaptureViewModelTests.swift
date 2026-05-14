@@ -135,12 +135,6 @@ final class CaptureViewModelTests: XCTestCase {
 
     func testPairStartsAuthoritySessionBeforePromptingForQrPayload() async {
         let pairingClient = StubPairingSessionClient(
-            activeSessionResponse: PairingSessionStatusResponse(
-                outputSafetyMode: "safe",
-                session: nil,
-                lockoutUntilUtc: nil,
-                pairingQrAvailable: false,
-                expiresInSeconds: 0),
             startSessionResponse: PairingSessionStatusResponse(
                 outputSafetyMode: "safe",
                 session: PairingSessionSummary(
@@ -163,14 +157,14 @@ final class CaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.status,
-            "Pairing session started. Import the current QR payload, then confirm pairing.")
+            "Pairing session ready. Import the current QR payload, then confirm pairing.")
         let calls = await pairingClient.calls()
-        XCTAssertEqual(calls, ["active", "start"])
+        XCTAssertEqual(calls, ["start"])
     }
 
-    func testPairUsesActiveAuthoritySessionBeforeConfirming() async {
+    func testPairUsesAuthoritySessionStartBeforeConfirming() async {
         let pairingClient = StubPairingSessionClient(
-            activeSessionResponse: PairingSessionStatusResponse(
+            startSessionResponse: PairingSessionStatusResponse(
                 outputSafetyMode: "safe",
                 session: PairingSessionSummary(
                     desktopDeviceId: "desktop-1",
@@ -183,7 +177,6 @@ final class CaptureViewModelTests: XCTestCase {
                 lockoutUntilUtc: nil,
                 pairingQrAvailable: true,
                 expiresInSeconds: 300),
-            startSessionResponse: nil,
             confirmResult: PairingConfirmResult(
                 trust_record: TrustRecord(
                     peer_device_id: "desktop-1",
@@ -204,7 +197,7 @@ final class CaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.status, "Paired with Room Receiver")
         let calls = await pairingClient.calls()
-        XCTAssertEqual(calls, ["active", "confirm"])
+        XCTAssertEqual(calls, ["start", "confirm"])
     }
 
     func testInitImportsQrPayloadFromEnvironmentJson() {
@@ -471,17 +464,14 @@ final class CaptureViewModelTests: XCTestCase {
 }
 
 private actor StubPairingSessionClient: PairingSessionClient {
-    private let activeSessionResponse: PairingSessionStatusResponse?
     private let startSessionResponse: PairingSessionStatusResponse?
     private let confirmResult: PairingConfirmResult?
     private var recordedCalls: [String] = []
 
     init(
-        activeSessionResponse: PairingSessionStatusResponse?,
         startSessionResponse: PairingSessionStatusResponse?,
         confirmResult: PairingConfirmResult?
     ) {
-        self.activeSessionResponse = activeSessionResponse
         self.startSessionResponse = startSessionResponse
         self.confirmResult = confirmResult
     }
@@ -514,11 +504,7 @@ private actor StubPairingSessionClient: PairingSessionClient {
 
     func getActivePairingSession(endpoint _: PairingEndpoint) async throws -> PairingSessionStatusResponse {
         recordedCalls.append("active")
-        guard let activeSessionResponse else {
-            throw PairingError.serverRejected(nil)
-        }
-
-        return activeSessionResponse
+        throw PairingError.serverRejected(nil)
     }
 
     func calls() -> [String] {

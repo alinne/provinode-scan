@@ -1,4 +1,6 @@
 import Foundation
+import LinnaeusEngineClientSdkApple
+import ProvinodeRoomContracts
 
 @MainActor
 final class LanDiscoveryService: NSObject, ObservableObject {
@@ -34,19 +36,7 @@ final class LanDiscoveryService: NSObject, ObservableObject {
     }
 
     private func refreshPublishedEndpoints() {
-        endpoints = resolvedEndpointsByKey.values.sorted {
-            if $0.displayName == $1.displayName {
-                return $0.host < $1.host
-            }
-            return $0.displayName < $1.displayName
-        }
-    }
-
-    private func txtValue(_ key: String, from record: [String: Data]) -> String? {
-        guard let value = record[key], !value.isEmpty else {
-            return nil
-        }
-        return String(data: value, encoding: .utf8)
+        endpoints = ClientDiscoveryCore.rankEndpoints(Array(resolvedEndpointsByKey.values))
     }
 }
 
@@ -95,33 +85,17 @@ final class LanDiscoveryService: NSObject, ObservableObject {
 @MainActor extension LanDiscoveryService: @preconcurrency NetServiceDelegate {
     func netServiceDidResolveAddress(_ sender: NetService) {
         let serviceKey = key(for: sender)
-
-        guard var host = sender.hostName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !host.isEmpty else {
+        let txtRecord = sender.txtRecordData().map(NetService.dictionary(fromTXTRecord:)) ?? [:]
+        guard let endpoint = ClientDiscoveryCore.makeEndpoint(
+            resolvedHost: sender.hostName,
+            serviceName: sender.name,
+            pairingPort: sender.port,
+            txtRecord: txtRecord)
+        else {
             return
         }
-        if host.hasSuffix(".") {
-            host.removeLast()
-        }
 
-        let pairingPort = sender.port > 0 ? sender.port : 7448
-        let txtRecord = sender.txtRecordData().map(NetService.dictionary(fromTXTRecord:)) ?? [:]
-        let displayName = txtValue("display_name", from: txtRecord) ?? sender.name
-        let desktopDeviceId = txtValue("device_id", from: txtRecord) ?? sender.name
-        let quicPort = Int(txtValue("quic_port", from: txtRecord) ?? "") ?? 7447
-        let pairingScheme = (txtValue("pairing_scheme", from: txtRecord) ?? "https").lowercased()
-        let pairingCertFingerprintSha256 = txtValue("pairing_cert_fingerprint_sha256", from: txtRecord)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-
-        resolvedEndpointsByKey[serviceKey] = PairingEndpoint(
-            host: host,
-            port: pairingPort,
-            quicPort: quicPort,
-            pairingScheme: pairingScheme,
-            pairingCertFingerprintSha256: pairingCertFingerprintSha256,
-            displayName: displayName,
-            desktopDeviceId: desktopDeviceId)
+        resolvedEndpointsByKey[serviceKey] = endpoint
         refreshPublishedEndpoints()
     }
 

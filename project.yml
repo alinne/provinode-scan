@@ -7,6 +7,8 @@ settings:
     SWIFT_VERSION: 5.10
     IPHONEOS_DEPLOYMENT_TARGET: 17.0
 packages:
+  LinnaeusEngineClientSdkApple:
+    path: ../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple
   ProvinodeRoomContracts:
     path: ../provinode-room-contracts/swift/ProvinodeRoomContracts
 targets:
@@ -28,6 +30,7 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 0.1.0
     dependencies:
+      - package: LinnaeusEngineClientSdkApple
       - package: ProvinodeRoomContracts
   ProvinodeScanTests:
     type: bundle.unit-test
@@ -38,6 +41,7 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
+      - package: LinnaeusEngineClientSdkApple
       - target: ProvinodeScan
       - package: ProvinodeRoomContracts
 schemes:

@@ -11,6 +11,17 @@ Native iOS app for Provinode room scanning (M1):
 ## Internal API Standard
 - Repo-local internal API gate: `pwsh ./scripts/ops/Assert-InternalApiArchitecture.ps1`
 - Shared payload changes must align with the standard internal contract layout and must not introduce new app-local schema drift.
+- Provinode Scan is a native capture adapter and thin control-plane client over engine-owned room authority.
+- Pairing, room session truth, captured-room import policy, and `SpaceSpec` derivation are not Scan-owned concerns.
+
+## Engine authority boundary
+- `linnaeus-engine` is the authoritative home for room pairing, room session lifecycle, captured-room asset normalization/import, and space derivation.
+- Scan remains responsible for:
+  - LiDAR/ARKit capture
+  - local-first session recording/export
+  - secure LAN transport/client identity
+  - native operator UX
+- Scan should consume shared engine client SDKs and shared room contracts instead of reintroducing app-local workflow authority.
 
 ## Requirements
 - iPhone Pro with LiDAR (`iPhone 12 Pro` or newer Pro line)
@@ -71,6 +82,7 @@ Recorded sessions are stored in app support with this layout:
 ## Simulator workflow
 - Start `provinode-room` in simulation mode (`--simulation-mode true --webcam-source synthetic --calibration-source synthetic`).
 - Call `POST /pairing/start` on desktop and copy `pairing_qr_payload` JSON.
+- That Room endpoint is a compatibility/operator-host surface over engine-owned pairing authority.
 - Paste payload into the iOS simulator QR import panel and tap `Import QR payload`.
 - Import validates endpoint security and freshness (`https`, non-expired token, supported wire major, valid desktop fingerprint, Base64 HMAC-SHA256 signature payload, valid QUIC endpoint host:port).
 - Pair, start capture, and stream synthetic samples to desktop receiver.

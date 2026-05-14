@@ -14,13 +14,17 @@
     "primary_surfaces": {
       "type": "array",
       "items": { "type": "string" },
-      "default": ["native capture, pairing/session compatibility consumption, and secure-LAN payload contracts"]
+      "default": ["native capture, shared pairing/discovery/session compatibility consumption, remote-capture video session interoperability, and secure-LAN payload contracts"]
     },
     "compatibility_requirements": {
       "type": "array",
       "items": { "type": "string" },
       "default": [
         "consume shared pairing, capture, session, trust, and LAN payload contracts from apps/provinode-room-contracts",
+        "consume extracted secure-channel and QUIC session-core semantics from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
+        "consume extracted pairing semantics, discovery parsing/ranking, endpoint normalization, and QR/session-preparation helpers from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
+        "consume extracted reconnect policy, backpressure/control-payload interpretation, resume-checkpoint generation, and client session-state policy from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
+        "consume extracted remote-node/remote-capture control and remote video packet envelope semantics from shared Linnaeus Apple/mobile client capability packages instead of app-local wire payloads",
         "keep pairing and session truth on Room compatibility and engine-backed authority seams as the steady-state client model rather than app-local schemas",
         "use shared RoomMetadataKeys and RoomContractVersions for capture/session metadata",
         "propagate traceparent on authority-bearing HTTP pairing and bootstrap requests",

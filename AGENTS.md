@@ -10,3 +10,5 @@
 - Current conformance state: shared payload contracts are `Adapter Client Guarded` consumers of `provinode-room-contracts`.
 - Do not create new app-local schema drift for capture, session, trust, or LAN payloads that already have a shared contract source.
 - Any new cross-process API or event contract introduced here must publish a durable artifact and identify whether it belongs in `apps/provinode-room-contracts` or a shared `linnaeus/*` contract foundation.
+- Future startup/connect UX in this repo must consume the shared host-model, lifecycle, and error-code contracts instead of inventing Scan-only lifecycle language.
+- If startup/connect errors are shown in-app, use native selectable text so the stable error code and detail can be copied by simple text selection whenever platform controls allow it.
