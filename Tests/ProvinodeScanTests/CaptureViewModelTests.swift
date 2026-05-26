@@ -200,18 +200,19 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertEqual(calls, ["start", "confirm"])
     }
 
-    func testInitImportsQrPayloadFromEnvironmentJson() {
+    func testInitImportsQrPayloadFromEnvironmentJson() async {
         let viewModel = CaptureViewModel(environment: [
             "PROVINODE_SCAN_QR_PAYLOAD_JSON": validPayloadJson()
-        ])
+        ], qrVerifier: makeStubQrVerifier())
+        await viewModel.waitForInitialImports()
 
-        XCTAssertEqual(viewModel.status, "QR payload imported")
+        XCTAssertEqual(viewModel.status, "QR payload verified")
         XCTAssertEqual(viewModel.pairingCode, "482915")
         XCTAssertEqual(viewModel.pairingNonce, "01JNONCEABCDEFGHJKMNPQRSTV")
         XCTAssertEqual(viewModel.manualHost, "192.168.1.44")
     }
 
-    func testInitImportsQrPayloadFromEnvironmentPath() throws {
+    func testInitImportsQrPayloadFromEnvironmentPath() async throws {
         let payloadPath = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("json")
@@ -220,15 +221,16 @@ final class CaptureViewModelTests: XCTestCase {
 
         let viewModel = CaptureViewModel(environment: [
             "PROVINODE_SCAN_QR_PAYLOAD_PATH": payloadPath.path
-        ])
+        ], qrVerifier: makeStubQrVerifier())
+        await viewModel.waitForInitialImports()
 
-        XCTAssertEqual(viewModel.status, "QR payload imported")
+        XCTAssertEqual(viewModel.status, "QR payload verified")
         XCTAssertEqual(viewModel.pairingCode, "482915")
         XCTAssertEqual(viewModel.manualHost, "192.168.1.44")
     }
 
-    func testApplyPairingQrPayloadImportsValues() {
-        let viewModel = CaptureViewModel()
+    func testApplyPairingQrPayloadImportsValues() async {
+        let viewModel = CaptureViewModel(qrVerifier: makeStubQrVerifier())
 
         let payload = """
         {
@@ -241,34 +243,35 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.manualHost, "192.168.1.44")
         XCTAssertEqual(viewModel.manualPort, "7448")
+        XCTAssertEqual(viewModel.manualQuicHost, "192.168.1.44")
         XCTAssertEqual(viewModel.manualQuicPort, "7447")
         XCTAssertEqual(viewModel.pairingCode, "482915")
         XCTAssertEqual(viewModel.pairingNonce, "01JNONCEABCDEFGHJKMNPQRSTV")
         XCTAssertEqual(viewModel.manualPairingFingerprintSha256, "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd")
         XCTAssertNil(viewModel.selectedEndpoint)
-        XCTAssertEqual(viewModel.status, "QR payload imported")
+        XCTAssertEqual(viewModel.status, "QR payload verified")
     }
 
-    func testApplyPairingQrPayloadParseFailureStatusInterpolatesError() {
+    func testApplyPairingQrPayloadParseFailureStatusInterpolatesError() async {
         let viewModel = CaptureViewModel()
 
-        viewModel.applyPairingQrPayload("{")
+        await viewModel.applyPairingQrPayload("{")
 
-        XCTAssertTrue(viewModel.status.hasPrefix("QR payload parse failed: "))
+        XCTAssertEqual(viewModel.status, "QR payload is malformed")
         XCTAssertFalse(viewModel.status.contains("\\(error.localizedDescription)"))
     }
 
-    func testApplyPairingQrPayloadRejectsExpiredToken() {
+    func testApplyPairingQrPayloadRejectsExpiredToken() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -282,18 +285,18 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2000-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload has expired. Start a new pairing session.")
     }
 
-    func testApplyPairingQrPayloadRejectsNonHttpsEndpoint() {
+    func testApplyPairingQrPayloadRejectsNonHttpsEndpoint() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -307,18 +310,18 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
-        XCTAssertEqual(viewModel.status, "QR payload pairing endpoint must use https")
+        XCTAssertEqual(viewModel.status, "QR payload pairing endpoint is invalid")
     }
 
-    func testApplyPairingQrPayloadRejectsUnsupportedProtocolVersion() {
+    func testApplyPairingQrPayloadRejectsUnsupportedProtocolVersion() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -338,12 +341,12 @@ final class CaptureViewModelTests: XCTestCase {
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload protocol version is unsupported")
     }
 
-    func testApplyPairingQrPayloadRejectsInvalidFingerprintFormat() {
+    func testApplyPairingQrPayloadRejectsInvalidFingerprintFormat() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -357,18 +360,18 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "not-a-sha256",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload desktop certificate fingerprint is invalid")
     }
 
-    func testApplyPairingQrPayloadRejectsInvalidSignaturePayload() {
+    func testApplyPairingQrPayloadRejectsInvalidSignaturePayload() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -382,18 +385,18 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "$$$"
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload signature is missing or invalid")
     }
 
-    func testApplyPairingQrPayloadRejectsShortSignaturePayload() {
+    func testApplyPairingQrPayloadRejectsShortSignaturePayload() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -407,18 +410,18 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "c2lnbmF0dXJl"
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload signature is missing or invalid")
     }
 
-    func testApplyPairingQrPayloadRejectsInvalidQuicEndpoint() {
+    func testApplyPairingQrPayloadRejectsInvalidQuicEndpoint() async {
         let viewModel = CaptureViewModel()
 
         let payload = """
@@ -432,13 +435,13 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "invalid-endpoint-format",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
 
-        viewModel.applyPairingQrPayload(payload)
+        await viewModel.applyPairingQrPayload(payload)
 
         XCTAssertEqual(viewModel.status, "QR payload QUIC endpoint is invalid")
     }
@@ -455,11 +458,29 @@ final class CaptureViewModelTests: XCTestCase {
           "quic_endpoint": "192.168.1.44:7447",
           "expires_at_utc": "2099-02-28T12:00:00Z",
           "desktop_cert_fingerprint_sha256": "ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
-          "protocol_version": "1.1",
+          "protocol_version": "1.8",
           "signature_alg": "rsa-pkcs1-sha256",
           "signature_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         }
         """
+    }
+
+    private func makeStubQrVerifier() -> StubPairingQrVerifier {
+        let payload = try! JSONDecoder().decode(PairingQrPayload.self, from: Data(validPayloadJson().utf8))
+        return StubPairingQrVerifier(payload: VerifiedPairingQrPayload(
+            payload: payload,
+            pairingHost: "192.168.1.44",
+            pairingPort: 7448,
+            quicHost: "192.168.1.44",
+            quicPort: 7447))
+    }
+}
+
+private struct StubPairingQrVerifier: PairingQrVerifying {
+    let payload: VerifiedPairingQrPayload
+
+    func verify(rawPayload: String) async throws -> VerifiedPairingQrPayload {
+        payload
     }
 }
 

@@ -40,6 +40,16 @@ actor TrustStore {
         recordsByDeviceId.values.sorted { $0.peer_device_id < $1.peer_device_id }
     }
 
+    func remove(deviceId: String) throws {
+        recordsByDeviceId.removeValue(forKey: deviceId)
+        try persist()
+    }
+
+    func reset() throws {
+        recordsByDeviceId.removeAll(keepingCapacity: false)
+        try persist()
+    }
+
     private static func load(fileUrl: URL, using key: SymmetricKey) throws -> [String: TrustRecord] {
         guard FileManager.default.fileExists(atPath: fileUrl.path) else {
             return [:]

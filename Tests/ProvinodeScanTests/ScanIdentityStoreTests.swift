@@ -141,6 +141,42 @@ final class ScanIdentityStoreTests: XCTestCase {
         XCTAssertFalse(migrated.contains("Legacy Desktop"))
     }
 
+    func testTrustStoreCanRemoveAndResetRecords() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scan-trust-reset-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let trustStore = try TrustStore(rootDirectory: root)
+        let now = Self.iso8601Now()
+        let first = TrustRecord(
+            peer_device_id: "desktop-a",
+            peer_display_name: "Desktop A",
+            peer_cert_fingerprint_sha256: String(repeating: "1", count: 64),
+            created_at_utc: now,
+            last_seen_at_utc: now,
+            status: "trusted",
+            previous_cert_fingerprints_sha256: nil)
+        let second = TrustRecord(
+            peer_device_id: "desktop-b",
+            peer_display_name: "Desktop B",
+            peer_cert_fingerprint_sha256: String(repeating: "2", count: 64),
+            created_at_utc: now,
+            last_seen_at_utc: now,
+            status: "trusted",
+            previous_cert_fingerprints_sha256: nil)
+
+        try await trustStore.upsert(first)
+        try await trustStore.upsert(second)
+        try await trustStore.remove(deviceId: "desktop-a")
+
+        let remaining = await trustStore.all()
+        XCTAssertEqual(remaining.map(\.peer_device_id), ["desktop-b"])
+
+        try await trustStore.reset()
+        let cleared = await trustStore.all()
+        XCTAssertTrue(cleared.isEmpty)
+    }
+
     private static func iso8601Now() -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

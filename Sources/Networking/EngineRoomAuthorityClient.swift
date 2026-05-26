@@ -16,6 +16,8 @@ protocol EngineRoomAuthorityClientProtocol: Sendable {
         contentType: String,
         payload: Data
     ) async throws -> EngineRoomAuthorityImportResponse
+    func fetchCurrentPhoneAnchorSession(endpoint: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot?
+    func fetchPhoneAnchorBoardImage(endpoint: PairingEndpoint, anchorId: String) async throws -> Data
 }
 
 struct EngineRoomAuthorityImportResponse: Sendable {
@@ -30,6 +32,14 @@ actor EngineRoomAuthorityClient: EngineRoomAuthorityClientProtocol {
         static let activePairing = "/engine/v1/production-space/rooms/\(roomId)/authority/pairing/active"
         static let confirmPairing = "/engine/v1/production-space/rooms/\(roomId)/authority/pairing/confirm"
         static let importCapturedAsset = "/engine/v1/production-space/rooms/\(roomId)/authority/captured-assets/import"
+        static let currentPhoneAnchor = "/scene/anchors/phone/current"
+
+        static func phoneAnchorBoardImage(anchorId: String) -> String {
+            var allowed = CharacterSet.urlPathAllowed
+            allowed.remove(charactersIn: "/")
+            let encodedAnchorId = anchorId.addingPercentEncoding(withAllowedCharacters: allowed) ?? anchorId
+            return "/scene/anchors/\(encodedAnchorId)/board.png"
+        }
     }
 
     private let transport: any PairingRequestTransport
@@ -88,6 +98,38 @@ actor EngineRoomAuthorityClient: EngineRoomAuthorityClientProtocol {
             body: payload)
         return EngineRoomAuthorityImportResponse(data: response.data, rawResponse: response.response)
     }
+
+    func fetchCurrentPhoneAnchorSession(endpoint: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot? {
+        let response = try await send(
+            endpoint: endpoint,
+            method: "GET",
+            path: Route.currentPhoneAnchor)
+
+        switch response.response.statusCode {
+        case 200:
+            return try JSONDecoder().decode(PhoneAnchorSessionSnapshot.self, from: response.data)
+        case 204, 404:
+            return nil
+        default:
+            let problem = ClientPairingCore.decodeProblemDetails(from: response.data, response: response.response)
+            throw PairingError.serverRejected(problem)
+        }
+    }
+
+    func fetchPhoneAnchorBoardImage(endpoint: PairingEndpoint, anchorId: String) async throws -> Data {
+        let response = try await send(
+            endpoint: endpoint,
+            method: "GET",
+            path: Route.phoneAnchorBoardImage(anchorId: anchorId),
+            accept: "image/png")
+
+        guard response.response.statusCode == 200 else {
+            let problem = ClientPairingCore.decodeProblemDetails(from: response.data, response: response.response)
+            throw PairingError.serverRejected(problem)
+        }
+
+        return response.data
+    }
 }
 
 private extension EngineRoomAuthorityClient {
@@ -97,7 +139,8 @@ private extension EngineRoomAuthorityClient {
         path: String,
         outputSafetyMode: String? = nil,
         contentType: String? = nil,
-        body: Data? = nil
+        body: Data? = nil,
+        accept: String? = nil
     ) async throws -> PairingTransportResponse {
         var request = try ClientPairingCore.makeRequest(
             endpoint: endpoint,
@@ -105,6 +148,9 @@ private extension EngineRoomAuthorityClient {
             path: path,
             traceparent: traceparentProvider(),
             outputSafetyMode: outputSafetyMode)
+        if let accept, !accept.isEmpty {
+            request.setValue(accept, forHTTPHeaderField: "Accept")
+        }
         if let contentType, !contentType.isEmpty {
             request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }

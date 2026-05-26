@@ -30,6 +30,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var dropNonKeyframes = false
     private var syntheticTask: Task<Void, Never>?
     private var syntheticStartedAt = Date()
+    private var captureStartedAt = Date()
     private var remoteVideoSequence: Int64 = 0
     private var lastRemoteVideoCaptureTimeNs: Int64?
 
@@ -54,6 +55,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
     func start() throws {
         try DeviceCapabilityPolicy.enforce()
+        captureStartedAt = Date()
 
         #if targetEnvironment(simulator)
         syntheticStartedAt = Date()
@@ -117,6 +119,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 let uptimeNs = Int64(DispatchTime.now().uptimeNanoseconds)
                 let elapsed = Date().timeIntervalSince(self.syntheticStartedAt)
                 let theta = elapsed * 0.25
+                let poseConfidence = 0.78 + min(0.18, elapsed / 80.0)
 
                 let poseMatrix: [Float] = [
                     1, 0, 0, 0,
@@ -126,7 +129,19 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 ]
 
                 if let posePayload = try? JSONEncoder().encode(PosePayload(matrix: poseMatrix)) {
-                    await self.emit(kind: .cameraPose, captureTimeNs: uptimeNs, payload: posePayload, metadata: ["pose_confidence": "0.92"])
+                    self.metrics.poseConfidence = poseConfidence
+                    await self.emit(
+                        kind: .cameraPose,
+                        captureTimeNs: uptimeNs,
+                        payload: posePayload,
+                        metadata: [
+                            "pose_confidence": String(format: "%.2f", poseConfidence),
+                            "coordinate_space": "PhoneARWorld",
+                            "transform_representation": "world_from_camera",
+                            "transform_target_space": "PhoneARWorld",
+                            "camera_space": "DesktopCameraSpace",
+                            "camera_convention": "camera+x-right+y-down+z-forward"
+                        ])
                 }
 
                 if let intrinsicsPayload = try? JSONEncoder().encode(
@@ -168,6 +183,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
                 self.metrics.avgKeyframeFps = self.metrics.keyframeCount > 0
                     ? Double(self.metrics.keyframeCount) / max(elapsed, 1)
                     : 0
+                self.metrics.captureDurationSeconds = elapsed
 
                 if self.frameCounter % 30 == 0 {
                     await self.emit(
@@ -206,6 +222,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private func process(frame: ARFrame) async {
         frameCounter += 1
         let captureTimeNs = Int64(frame.timestamp * 1_000_000_000)
+        metrics.captureDurationSeconds = Date().timeIntervalSince(captureStartedAt)
 
         await emitPose(frame: frame, captureTimeNs: captureTimeNs)
         await emitIntrinsics(frame: frame, captureTimeNs: captureTimeNs)
@@ -248,9 +265,22 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
     private func emitPose(frame: ARFrame, captureTimeNs: Int64) async {
         let transform = frame.camera.transform
+        let poseConfidence = Self.poseConfidence(for: frame.camera.trackingState)
+        metrics.poseConfidence = poseConfidence
         let posePayload = PosePayload(matrix: transform.toArray())
         guard let payload = try? JSONEncoder().encode(posePayload) else { return }
-        await emit(kind: .cameraPose, captureTimeNs: captureTimeNs, payload: payload, metadata: nil)
+        await emit(
+            kind: .cameraPose,
+            captureTimeNs: captureTimeNs,
+            payload: payload,
+            metadata: [
+                "pose_confidence": String(format: "%.2f", poseConfidence),
+                "coordinate_space": "PhoneARWorld",
+                "transform_representation": "world_from_camera",
+                "transform_target_space": "PhoneARWorld",
+                "camera_space": "DesktopCameraSpace",
+                "camera_convention": "camera+x-right+y-down+z-forward"
+            ])
     }
 
     private func emitIntrinsics(frame: ARFrame, captureTimeNs: Int64) async {
@@ -466,6 +496,28 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         }
 
         return result
+    }
+
+    private static func poseConfidence(for trackingState: ARCamera.TrackingState) -> Double {
+        switch trackingState {
+        case .normal:
+            return 0.95
+        case .notAvailable:
+            return 0.10
+        case .limited(let reason):
+            switch reason {
+            case .initializing:
+                return 0.55
+            case .relocalizing:
+                return 0.45
+            case .excessiveMotion:
+                return 0.35
+            case .insufficientFeatures:
+                return 0.30
+            @unknown default:
+                return 0.25
+            }
+        }
     }
 }
 

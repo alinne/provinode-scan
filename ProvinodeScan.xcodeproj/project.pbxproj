@@ -11,28 +11,33 @@
 		0A52EA16E3431E5520B342E3 /* ProvinodeScanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30539B50B6578189BF0B507 /* ProvinodeScanApp.swift */; };
 		0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */; };
 		35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */; };
-		3F7F73EED32ACF8C11E93A12 /* EngineRoomAuthorityClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 947A55C1044A54F2E4A40B8A /* EngineRoomAuthorityClient.swift */; };
+		41CE747D91EF24F53E8663A9 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 76E8D74391C69E1A578AEE5D /* ProvinodeRoomContracts */; };
 		542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */; };
 		55C3230C57BBF6B5DCBEEED4 /* EngineSecureChannelCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */; };
 		5AE50999FB30AA8B2E4EEC6C /* CalibrationPatternView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */; };
 		5D1101A9C41F6C4F6787C790 /* ULID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B91C4745E8E1891EB036960 /* ULID.swift */; };
-		5D1101A9C41F6C4F6787C791 /* LinnaeusEngineClientSdkApple in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B60 /* LinnaeusEngineClientSdkApple */; };
-		5E176F93D3351B1DC3F53EC7 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 76E8D74391C69E1A578AEE5D /* ProvinodeRoomContracts */; };
+		5DFCE856D3AE1F96FD356F1E /* RecordedSessionLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */; };
+		5E176F93D3351B1DC3F53EC7 /* LinnaeusEngineClientSdkApple in Frameworks */ = {isa = PBXBuildFile; productRef = 31BE75116FD93E7560358EE3 /* LinnaeusEngineClientSdkApple */; };
 		6088492A86C25DA3EA0533FD /* TrustStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CDF49790D658CA8FC64AFEB /* TrustStore.swift */; };
 		676D88572FC1EFE6069918B9 /* SessionRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15D254857DDE20D05A99E27D /* SessionRecorder.swift */; };
 		6A8E739B6CF0E2093E4D20D9 /* ScanIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA72F134C0E162BDB9CFFB9C /* ScanIdentityStore.swift */; };
 		6E555F7617DF0621A3306249 /* CaptureViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491E01F2795C326330EBF354 /* CaptureViewModel.swift */; };
+		7317BE6F8C78033DDF4BF4FA /* PairingQrVerificationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E79F9E73FE655D217B6A272 /* PairingQrVerificationServiceTests.swift */; };
 		7676B85E5BD51157B1D9FDC3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703680052CF0712179BDB312 /* ContentView.swift */; };
+		8269ED38077ACCE117D1656A /* EngineRoomAuthorityClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C57CE1167814CBF345D2BE7 /* EngineRoomAuthorityClient.swift */; };
 		95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */; };
 		AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */; };
 		B23DACE90E09DAADECDFC913 /* Sha256.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */; };
+		BB5B3AE95E0DBB2002117327 /* ScanCaptureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */; };
 		BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */; };
 		CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */; };
 		D00F1900539F37B37DD704CE /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94414950604717D1A400ED1 /* PairingService.swift */; };
 		D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */; };
+		DC7549EA75A638AB38626919 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
+		E97636D2656125F319B27801 /* PairingQrVerificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */; };
 		EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */; };
-		F14F07128D4F82DDF8BDE3D2 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
-		F14F07128D4F82DDF8BDE3D3 /* LinnaeusEngineClientSdkApple in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B61 /* LinnaeusEngineClientSdkApple */; };
+		F14F07128D4F82DDF8BDE3D2 /* LinnaeusEngineClientSdkApple in Frameworks */ = {isa = PBXBuildFile; productRef = 86C1A561E1363E73A14E049D /* LinnaeusEngineClientSdkApple */; };
+		F58D33B821AFB0F856EB904A /* RecordedSessionLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */; };
 		FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */; };
 		FEC839608187B777AA3D0704 /* StructuredLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E46731DC242956565BF1920D /* StructuredLog.swift */; };
 /* End PBXBuildFile section */
@@ -49,6 +54,7 @@
 
 /* Begin PBXFileReference section */
 		0320B5EF1DE0F412A6F15407 /* PairingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingServiceTests.swift; sourceTree = "<group>"; };
+		0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationService.swift; sourceTree = "<group>"; };
 		0F1B2098575AB940EB975DC2 /* ProvinodeScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ProvinodeScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		15D254857DDE20D05A99E27D /* SessionRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorder.swift; sourceTree = "<group>"; };
 		1B91C4745E8E1891EB036960 /* ULID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ULID.swift; sourceTree = "<group>"; };
@@ -56,16 +62,18 @@
 		2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderTests.swift; sourceTree = "<group>"; };
 		30C2990790E3AB38CD5BD418 /* RoomCapturePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCapturePipeline.swift; sourceTree = "<group>"; };
 		491E01F2795C326330EBF354 /* CaptureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModel.swift; sourceTree = "<group>"; };
+		4C57CE1167814CBF345D2BE7 /* EngineRoomAuthorityClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineRoomAuthorityClient.swift; sourceTree = "<group>"; };
+		4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedSessionLibraryTests.swift; sourceTree = "<group>"; };
 		5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureViewModelTests.swift; sourceTree = "<group>"; };
 		6E28A27C0A0003BCC8E2D4A5 /* ProvinodeScanTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ProvinodeScanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sha256.swift; sourceTree = "<group>"; };
 		703680052CF0712179BDB312 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedSessionLibrary.swift; sourceTree = "<group>"; };
+		7E79F9E73FE655D217B6A272 /* PairingQrVerificationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationServiceTests.swift; sourceTree = "<group>"; };
 		81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionMetrics.swift; sourceTree = "<group>"; };
 		8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSecureChannelCrypto.swift; sourceTree = "<group>"; };
-		947A55C1044A54F2E4A40B8A /* EngineRoomAuthorityClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineRoomAuthorityClient.swift; sourceTree = "<group>"; };
 		8E10A792972DC6FA9F658B18 /* DeviceCapabilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapabilityPolicy.swift; sourceTree = "<group>"; };
 		9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerView.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4B5E /* LinnaeusEngineClientSdkApple */ = {isa = PBXFileReference; lastKnownFileType = folder; name = LinnaeusEngineClientSdkApple; path = ../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple; sourceTree = SOURCE_ROOT; };
 		994E4C5F366D2F32D8DACB20 /* ProvinodeRoomContracts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ProvinodeRoomContracts; path = "../provinode-room-contracts/swift/ProvinodeRoomContracts"; sourceTree = SOURCE_ROOT; };
 		9CDF49790D658CA8FC64AFEB /* TrustStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustStore.swift; sourceTree = "<group>"; };
 		A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuicTransportClient.swift; sourceTree = "<group>"; };
@@ -76,6 +84,8 @@
 		DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanDiscoveryService.swift; sourceTree = "<group>"; };
 		DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIdentityStoreTests.swift; sourceTree = "<group>"; };
 		E46731DC242956565BF1920D /* StructuredLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredLog.swift; sourceTree = "<group>"; };
+		E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCaptureState.swift; sourceTree = "<group>"; };
+		FA08ADC093C6D877E11E18DC /* Linnaeus.Engine.ClientSdk.Apple */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Linnaeus.Engine.ClientSdk.Apple; path = "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,8 +93,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F14F07128D4F82DDF8BDE3D3 /* LinnaeusEngineClientSdkApple in Frameworks */,
-				F14F07128D4F82DDF8BDE3D2 /* ProvinodeRoomContracts in Frameworks */,
+				F14F07128D4F82DDF8BDE3D2 /* LinnaeusEngineClientSdkApple in Frameworks */,
+				DC7549EA75A638AB38626919 /* ProvinodeRoomContracts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,8 +102,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5D1101A9C41F6C4F6787C791 /* LinnaeusEngineClientSdkApple in Frameworks */,
-				5E176F93D3351B1DC3F53EC7 /* ProvinodeRoomContracts in Frameworks */,
+				5E176F93D3351B1DC3F53EC7 /* LinnaeusEngineClientSdkApple in Frameworks */,
+				41CE747D91EF24F53E8663A9 /* ProvinodeRoomContracts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,9 +136,10 @@
 		3A9943A1001399231A8F8DAC /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				4C57CE1167814CBF345D2BE7 /* EngineRoomAuthorityClient.swift */,
 				8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */,
-				947A55C1044A54F2E4A40B8A /* EngineRoomAuthorityClient.swift */,
 				DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */,
+				0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */,
 				C94414950604717D1A400ED1 /* PairingService.swift */,
 				A04F036EF922005FEC3F4B14 /* QuicTransportClient.swift */,
 			);
@@ -138,6 +149,7 @@
 		4BA1C31A9D0BFEADD3D6C3EA /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */,
 				81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */,
 			);
 			path = Models;
@@ -156,7 +168,7 @@
 		880140D0EE6A151B5E45A506 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				A1B2C3D4E5F60718293A4B5E /* LinnaeusEngineClientSdkApple */,
+				FA08ADC093C6D877E11E18DC /* Linnaeus.Engine.ClientSdk.Apple */,
 				994E4C5F366D2F32D8DACB20 /* ProvinodeRoomContracts */,
 			);
 			name = Packages;
@@ -212,6 +224,7 @@
 		EC3A31093206370772A077F9 /* Storage */ = {
 			isa = PBXGroup;
 			children = (
+				7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */,
 				15D254857DDE20D05A99E27D /* SessionRecorder.swift */,
 				9CDF49790D658CA8FC64AFEB /* TrustStore.swift */,
 			);
@@ -223,7 +236,9 @@
 			children = (
 				5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */,
 				1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */,
+				7E79F9E73FE655D217B6A272 /* PairingQrVerificationServiceTests.swift */,
 				0320B5EF1DE0F412A6F15407 /* PairingServiceTests.swift */,
+				4D02E80F45122739C21D200A /* RecordedSessionLibraryTests.swift */,
 				DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */,
 				2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */,
 			);
@@ -247,7 +262,7 @@
 			);
 			name = ProvinodeScan;
 			packageProductDependencies = (
-				A1B2C3D4E5F60718293A4B60 /* LinnaeusEngineClientSdkApple */,
+				31BE75116FD93E7560358EE3 /* LinnaeusEngineClientSdkApple */,
 				76E8D74391C69E1A578AEE5D /* ProvinodeRoomContracts */,
 			);
 			productName = ProvinodeScan;
@@ -268,7 +283,7 @@
 			);
 			name = ProvinodeScanTests;
 			packageProductDependencies = (
-				A1B2C3D4E5F60718293A4B61 /* LinnaeusEngineClientSdkApple */,
+				86C1A561E1363E73A14E049D /* LinnaeusEngineClientSdkApple */,
 				5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */,
 			);
 			productName = ProvinodeScanTests;
@@ -283,9 +298,10 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = D2046BAB0359B19608C86E71 /* Build configuration list for PBXProject "ProvinodeScan" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -295,10 +311,11 @@
 			mainGroup = 983EDD654C7C5112C9B2D43B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A1B2C3D4E5F60718293A4B5F /* XCLocalSwiftPackageReference "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple" */,
+				E81F92078F1E9E1C4798E10B /* XCLocalSwiftPackageReference "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple" */,
 				FC3FB970873E594448C97B21 /* XCLocalSwiftPackageReference "../provinode-room-contracts/swift/ProvinodeRoomContracts" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 9684BB5FD6D6434B82F09F00 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -317,14 +334,17 @@
 				6E555F7617DF0621A3306249 /* CaptureViewModel.swift in Sources */,
 				7676B85E5BD51157B1D9FDC3 /* ContentView.swift in Sources */,
 				FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */,
+				8269ED38077ACCE117D1656A /* EngineRoomAuthorityClient.swift in Sources */,
 				95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */,
-				3F7F73EED32ACF8C11E93A12 /* EngineRoomAuthorityClient.swift in Sources */,
 				542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */,
+				E97636D2656125F319B27801 /* PairingQrVerificationService.swift in Sources */,
 				D00F1900539F37B37DD704CE /* PairingService.swift in Sources */,
 				0A52EA16E3431E5520B342E3 /* ProvinodeScanApp.swift in Sources */,
 				EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */,
 				35B93BE7D1D45245109F4E72 /* QuicTransportClient.swift in Sources */,
+				5DFCE856D3AE1F96FD356F1E /* RecordedSessionLibrary.swift in Sources */,
 				0B9B716F058A54545515FC51 /* RoomCapturePipeline.swift in Sources */,
+				BB5B3AE95E0DBB2002117327 /* ScanCaptureState.swift in Sources */,
 				6A8E739B6CF0E2093E4D20D9 /* ScanIdentityStore.swift in Sources */,
 				CD9F1D900AD4AB32801F29B9 /* ScanSessionMetrics.swift in Sources */,
 				676D88572FC1EFE6069918B9 /* SessionRecorder.swift in Sources */,
@@ -341,7 +361,9 @@
 			files = (
 				D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */,
 				55C3230C57BBF6B5DCBEEED4 /* EngineSecureChannelCryptoTests.swift in Sources */,
+				7317BE6F8C78033DDF4BF4FA /* PairingQrVerificationServiceTests.swift in Sources */,
 				08DFC1E7072823FBE7AFD209 /* PairingServiceTests.swift in Sources */,
+				F58D33B821AFB0F856EB904A /* RecordedSessionLibraryTests.swift in Sources */,
 				BF752462D401B7C8BD84D03A /* ScanIdentityStoreTests.swift in Sources */,
 				AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */,
 			);
@@ -580,7 +602,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		A1B2C3D4E5F60718293A4B5F /* XCLocalSwiftPackageReference "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple" */ = {
+		E81F92078F1E9E1C4798E10B /* XCLocalSwiftPackageReference "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../linnaeus/linnaeus-engine/src/Linnaeus.Engine.ClientSdk.Apple";
 		};
@@ -591,6 +613,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		31BE75116FD93E7560358EE3 /* LinnaeusEngineClientSdkApple */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = LinnaeusEngineClientSdkApple;
+		};
 		5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ProvinodeRoomContracts;
@@ -599,11 +625,7 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = ProvinodeRoomContracts;
 		};
-		A1B2C3D4E5F60718293A4B60 /* LinnaeusEngineClientSdkApple */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = LinnaeusEngineClientSdkApple;
-		};
-		A1B2C3D4E5F60718293A4B61 /* LinnaeusEngineClientSdkApple */ = {
+		86C1A561E1363E73A14E049D /* LinnaeusEngineClientSdkApple */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = LinnaeusEngineClientSdkApple;
 		};

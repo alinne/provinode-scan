@@ -15,6 +15,11 @@ protocol PairingRequestTransport: Sendable {
     func send(_ request: URLRequest, pinnedFingerprintSha256: String) async throws -> PairingTransportResponse
 }
 
+protocol PhoneAnchorClient: Sendable {
+    func fetchCurrentPhoneAnchorSession(endpoint: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot?
+    func fetchPhoneAnchorBoardImage(endpoint: PairingEndpoint, anchorId: String) async throws -> Data
+}
+
 struct PairingConfirmRequest: Codable, Equatable, Sendable {
     let pairing_code: String
     let pairing_confirm: PairingConfirmPayload
@@ -90,9 +95,18 @@ actor PairingService {
         activeSessionCache.cache(response, for: endpoint)
         return response
     }
+
+    func fetchCurrentPhoneAnchorSession(endpoint: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot? {
+        try await authorityClient.fetchCurrentPhoneAnchorSession(endpoint: endpoint)
+    }
+
+    func fetchPhoneAnchorBoardImage(endpoint: PairingEndpoint, anchorId: String) async throws -> Data {
+        try await authorityClient.fetchPhoneAnchorBoardImage(endpoint: endpoint, anchorId: anchorId)
+    }
 }
 
 extension PairingService: PairingSessionClient {}
+extension PairingService: PhoneAnchorClient {}
 
 private extension ISO8601DateFormatter {
     static var fractional: ISO8601DateFormatter {

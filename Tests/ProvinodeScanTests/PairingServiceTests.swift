@@ -499,6 +499,14 @@ private actor StubEngineRoomAuthorityClient: EngineRoomAuthorityClientProtocol {
         throw NSError(domain: "StubEngineRoomAuthorityClient", code: 4)
     }
 
+    func fetchCurrentPhoneAnchorSession(endpoint _: PairingEndpoint) async throws -> PhoneAnchorSessionSnapshot? {
+        nil
+    }
+
+    func fetchPhoneAnchorBoardImage(endpoint _: PairingEndpoint, anchorId _: String) async throws -> Data {
+        throw NSError(domain: "StubEngineRoomAuthorityClient", code: 5)
+    }
+
     func startCallCount() -> Int {
         startCalls
     }
