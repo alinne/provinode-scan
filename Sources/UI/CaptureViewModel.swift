@@ -574,16 +574,6 @@ final class CaptureViewModel: ObservableObject {
             desktopDeviceId: "manual-endpoint")
     }
 
-    private func preparePairingSession(endpoint: PairingEndpoint) async throws -> PreparedPairingSession {
-        let activeStatus = try await pairingService.getActivePairingSession(endpoint: endpoint)
-        if !ClientSessionPreparation.shouldStartPairingSession(for: activeStatus) {
-            return PreparedPairingSession(status: activeStatus, startedNewSession: false)
-        }
-
-        let startedStatus = try await pairingService.startPairingSession(endpoint: endpoint)
-        return PreparedPairingSession(status: startedStatus, startedNewSession: true)
-    }
-
     private func resolvedStreamingEndpoint() -> PairingEndpoint? {
         if let selectedEndpoint {
             return PairingEndpoint(
