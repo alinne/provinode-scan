@@ -27,6 +27,8 @@ final class CaptureViewModel: ObservableObject {
     @Published var captureCoaching: String = "Pair with a desktop to begin."
     @Published var safeToStop = false
     @Published var metrics = ScanSessionMetrics()
+    @Published var previewImage: UIImage?
+    @Published var coverage = CaptureCoverageSnapshot()
     @Published var lastSessionDirectory: URL?
     @Published var lastExportPath: URL?
     @Published var activeSessionId: String = ""
@@ -407,9 +409,11 @@ final class CaptureViewModel: ObservableObject {
                 while let self, self.isCapturing {
                     if let pipeline = self.pipeline {
                         self.metrics = pipeline.metrics
+                        self.previewImage = pipeline.previewImage
+                        self.coverage = pipeline.coverage
                         self.refreshCaptureHealth()
                     }
-                    try? await Task.sleep(for: .seconds(1))
+                    try? await Task.sleep(for: .milliseconds(250))
                 }
             }
         } catch {

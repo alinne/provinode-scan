@@ -9,6 +9,8 @@ import UIKit
 final class RoomCapturePipeline: NSObject, ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var metrics = ScanSessionMetrics()
+    @Published private(set) var previewImage: UIImage?
+    @Published private(set) var coverage = CaptureCoverageSnapshot()
 
     private let session: ARSession
     private let ciContext = CIContext(options: nil)
@@ -33,6 +35,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
     private var captureStartedAt = Date()
     private var remoteVideoSequence: Int64 = 0
     private var lastRemoteVideoCaptureTimeNs: Int64?
+    private var visitedCells: Set<CaptureCoverageCell> = []
 
     init(
         sessionId: String,
@@ -94,7 +97,13 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
         var summaryMetadata = [
             "samples_total": String(metrics.emittedSamples),
-            "samples_dropped": String(metrics.droppedSamples)
+            "samples_dropped": String(metrics.droppedSamples),
+            "observed_surface_area_m2": String(format: "%.3f", coverage.observedSurfaceAreaSquareMeters),
+            "room_width_m": String(format: "%.3f", coverage.widthMeters),
+            "room_length_m": String(format: "%.3f", coverage.lengthMeters),
+            "room_height_m": String(format: "%.3f", coverage.heightMeters),
+            "observed_spatial_cells": String(coverage.observedCells.count),
+            "visited_spatial_cells": String(coverage.visitedCells.count)
         ]
         for (key, value) in sessionMetadata {
             summaryMetadata[key] = value
@@ -223,6 +232,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         frameCounter += 1
         let captureTimeNs = Int64(frame.timestamp * 1_000_000_000)
         metrics.captureDurationSeconds = Date().timeIntervalSince(captureStartedAt)
+        recordVisitedCell(cameraTransform: frame.camera.transform)
 
         await emitPose(frame: frame, captureTimeNs: captureTimeNs)
         await emitIntrinsics(frame: frame, captureTimeNs: captureTimeNs)
@@ -230,6 +240,7 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         let shouldEmitKeyframe = frame.timestamp - lastKeyframeTimestamp >= keyframeIntervalSec
         if shouldEmitKeyframe, let keyframePayload = keyframePayload(from: frame.capturedImage) {
             lastKeyframeTimestamp = frame.timestamp
+            previewImage = displayPreview(from: frame.capturedImage)
             await emit(kind: .keyframeRgb, captureTimeNs: captureTimeNs, payload: keyframePayload, metadata: ["mime": "image/jpeg"])
             await sendRemoteVideoFrame(
                 payload: keyframePayload,
@@ -249,13 +260,16 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
 
         if !dropNonKeyframes,
            frame.timestamp - lastMeshTimestamp >= meshIntervalSec,
-           let meshPayload = meshPayload(from: frame.anchors) {
+           let meshUpdate = meshUpdate(from: frame.anchors, visitedCells: visitedCells) {
             lastMeshTimestamp = frame.timestamp
-            await emit(kind: .meshAnchorBatch, captureTimeNs: captureTimeNs, payload: meshPayload, metadata: ["format": "mesh_anchor_batch_v2"])
+            coverage = meshUpdate.coverage
+            await emit(kind: .meshAnchorBatch, captureTimeNs: captureTimeNs, payload: meshUpdate.payload, metadata: ["format": "mesh_anchor_batch_v2"])
             metrics.meshCount += 1
         }
 
-        metrics.avgKeyframeFps = metrics.keyframeCount > 0 ? Double(metrics.keyframeCount) / max(frame.timestamp, 1) : 0
+        metrics.avgKeyframeFps = metrics.keyframeCount > 0
+            ? Double(metrics.keyframeCount) / max(metrics.captureDurationSeconds, 1)
+            : 0
 
         if frameCounter % 30 == 0 {
             let heartbeat = Data("heartbeat".utf8)
@@ -398,6 +412,24 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         return UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.8)
     }
 
+    private func displayPreview(from pixelBuffer: CVPixelBuffer) -> UIImage? {
+        let orientation: CGImagePropertyOrientation
+        switch UIDevice.current.orientation {
+        case .portraitUpsideDown:
+            orientation = .left
+        case .landscapeLeft:
+            orientation = .up
+        case .landscapeRight:
+            orientation = .down
+        default:
+            orientation = .right
+        }
+
+        let image = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
     private func syntheticKeyframePayload(seed: UInt8) -> Data? {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 360))
         let image = renderer.image { context in
@@ -436,24 +468,70 @@ final class RoomCapturePipeline: NSObject, ObservableObject {
         return Data(bytes: baseAddress, count: byteCount)
     }
 
-    private func meshPayload(from anchors: [ARAnchor]) -> Data? {
-        let meshEntries = anchors.compactMap { anchor -> MeshAnchorGeometryPayload? in
-            guard let meshAnchor = anchor as? ARMeshAnchor else { return nil }
+    private func meshUpdate(
+        from anchors: [ARAnchor],
+        visitedCells: Set<CaptureCoverageCell>
+    ) -> (payload: Data, coverage: CaptureCoverageSnapshot)? {
+        var meshEntries: [MeshAnchorGeometryPayload] = []
+        var surfaceArea = 0.0
+        var observedCells: Set<CaptureCoverageCell> = []
+        var minimum = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var maximum = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+
+        for case let meshAnchor as ARMeshAnchor in anchors {
             let vertices = extractMeshVertices(meshAnchor.geometry.vertices)
             let faceIndices = extractFaceIndices(meshAnchor.geometry.faces)
-            guard !vertices.isEmpty, !faceIndices.isEmpty else {
-                return nil
-            }
+            guard !vertices.isEmpty, !faceIndices.isEmpty else { continue }
 
-            return MeshAnchorGeometryPayload(
+            meshEntries.append(MeshAnchorGeometryPayload(
                 identifier: meshAnchor.identifier.uuidString,
                 transform: meshAnchor.transform.toArray(),
                 vertices: vertices,
-                faceIndices: faceIndices)
+                faceIndices: faceIndices))
+
+            func worldVertex(_ index: UInt32) -> SIMD3<Float>? {
+                let offset = Int(index) * 3
+                guard offset + 2 < vertices.count else { return nil }
+                let local = SIMD4<Float>(vertices[offset], vertices[offset + 1], vertices[offset + 2], 1)
+                let world = meshAnchor.transform * local
+                return SIMD3<Float>(world.x, world.y, world.z)
+            }
+
+            for faceOffset in stride(from: 0, to: faceIndices.count - 2, by: 3) {
+                guard let a = worldVertex(faceIndices[faceOffset]),
+                      let b = worldVertex(faceIndices[faceOffset + 1]),
+                      let c = worldVertex(faceIndices[faceOffset + 2])
+                else { continue }
+
+                surfaceArea += Double(simd_length(simd_cross(b - a, c - a))) * 0.5
+                let centroid = (a + b + c) / 3
+                observedCells.insert(CaptureCoverageCell(
+                    x: Int(floor(Double(centroid.x) / 0.5)),
+                    z: Int(floor(Double(centroid.z) / 0.5))))
+                minimum = simd_min(minimum, simd_min(a, simd_min(b, c)))
+                maximum = simd_max(maximum, simd_max(a, simd_max(b, c)))
+            }
         }
 
         guard !meshEntries.isEmpty else { return nil }
-        return try? JSONEncoder().encode(meshEntries)
+        guard let payload = try? JSONEncoder().encode(meshEntries) else { return nil }
+        let hasBounds = minimum.x.isFinite && maximum.x.isFinite
+        let coverage = CaptureCoverageSnapshot(
+            observedSurfaceAreaSquareMeters: surfaceArea,
+            widthMeters: hasBounds ? Double(maximum.x - minimum.x) : 0,
+            lengthMeters: hasBounds ? Double(maximum.z - minimum.z) : 0,
+            heightMeters: hasBounds ? Double(maximum.y - minimum.y) : 0,
+            meshAnchorCount: meshEntries.count,
+            observedCells: observedCells,
+            visitedCells: visitedCells)
+        return (payload, coverage)
+    }
+
+    private func recordVisitedCell(cameraTransform: simd_float4x4) {
+        let position = cameraTransform.columns.3
+        visitedCells.insert(CaptureCoverageCell(
+            x: Int(floor(Double(position.x) / 0.5)),
+            z: Int(floor(Double(position.z) / 0.5))))
     }
 
     private func extractMeshVertices(_ source: ARGeometrySource) -> [Float] {

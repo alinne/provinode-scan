@@ -26,6 +26,7 @@
 		7676B85E5BD51157B1D9FDC3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703680052CF0712179BDB312 /* ContentView.swift */; };
 		8269ED38077ACCE117D1656A /* EngineRoomAuthorityClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C57CE1167814CBF345D2BE7 /* EngineRoomAuthorityClient.swift */; };
 		95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */; };
+		A4DB91F383F4885015053B60 /* CaptureCoverageSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB9F4CDAD1429CD2BBA3EDC /* CaptureCoverageSnapshot.swift */; };
 		AC1D0F6BF7A5409CE9843A8B /* SessionRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B669252EDD8D9A9A9EBDDC6 /* SessionRecorderTests.swift */; };
 		B23DACE90E09DAADECDFC913 /* Sha256.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */; };
 		BB5B3AE95E0DBB2002117327 /* ScanCaptureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */; };
@@ -81,6 +82,7 @@
 		BE06601AEC62F0D3CD187B82 /* CalibrationPatternView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationPatternView.swift; sourceTree = "<group>"; };
 		C94414950604717D1A400ED1 /* PairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingService.swift; sourceTree = "<group>"; };
 		DA72F134C0E162BDB9CFFB9C /* ScanIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIdentityStore.swift; sourceTree = "<group>"; };
+		DAB9F4CDAD1429CD2BBA3EDC /* CaptureCoverageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCoverageSnapshot.swift; sourceTree = "<group>"; };
 		DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanDiscoveryService.swift; sourceTree = "<group>"; };
 		DDAE7DEA9039CC26F2C39F04 /* ScanIdentityStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIdentityStoreTests.swift; sourceTree = "<group>"; };
 		E46731DC242956565BF1920D /* StructuredLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredLog.swift; sourceTree = "<group>"; };
@@ -149,6 +151,7 @@
 		4BA1C31A9D0BFEADD3D6C3EA /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				DAB9F4CDAD1429CD2BBA3EDC /* CaptureCoverageSnapshot.swift */,
 				E6E59FF8D765D8809F0B625A /* ScanCaptureState.swift */,
 				81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */,
 			);
@@ -331,6 +334,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5AE50999FB30AA8B2E4EEC6C /* CalibrationPatternView.swift in Sources */,
+				A4DB91F383F4885015053B60 /* CaptureCoverageSnapshot.swift in Sources */,
 				6E555F7617DF0621A3306249 /* CaptureViewModel.swift in Sources */,
 				7676B85E5BD51157B1D9FDC3 /* ContentView.swift in Sources */,
 				FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */,

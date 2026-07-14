@@ -29,7 +29,12 @@ final class RecordedSessionLibraryTests: XCTestCase {
             metadata: nil)
 
         try await recorder.record(envelope: envelope, payload: payload)
-        let sessionDirectory = try await recorder.finalize()
+        let sessionDirectory = try await recorder.finalize(extraMetadata: [
+            "observed_surface_area_m2": "14.25",
+            "room_width_m": "4.5",
+            "room_length_m": "3.25",
+            "room_height_m": "2.7"
+        ])
         let exportRoot = RecordedSessionLibrary.exportDirectory()
         try FileManager.default.createDirectory(at: exportRoot, withIntermediateDirectories: true)
         let exportPath = exportRoot.appendingPathComponent("\(sessionDirectory.lastPathComponent).roomcapture", isDirectory: true)
@@ -47,5 +52,10 @@ final class RecordedSessionLibraryTests: XCTestCase {
         XCTAssertEqual(session.integrityStatus, "verified")
         XCTAssertTrue(session.exported)
         XCTAssertEqual(session.exportPath?.lastPathComponent, "\(sessionId).roomcapture")
+        XCTAssertEqual(session.observedSurfaceAreaSquareMeters, 14.25, accuracy: 0.001)
+        XCTAssertEqual(session.roomWidthMeters, 4.5, accuracy: 0.001)
+        XCTAssertEqual(session.roomLengthMeters, 3.25, accuracy: 0.001)
+        XCTAssertEqual(session.roomHeightMeters, 2.7, accuracy: 0.001)
+        XCTAssertEqual(session.roomSizeSummary, "4.5 × 3.2 × 2.7 m")
     }
 }
