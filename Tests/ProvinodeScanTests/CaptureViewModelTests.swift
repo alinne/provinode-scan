@@ -200,7 +200,11 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertEqual(calls, ["start", "confirm"])
     }
 
-    func testInitImportsQrPayloadFromEnvironmentJson() async {
+    func testInitImportsQrPayloadFromEnvironmentJson() async throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Environment bootstrap is intentionally simulator-only.")
+        #endif
+
         let viewModel = CaptureViewModel(environment: [
             "PROVINODE_SCAN_QR_PAYLOAD_JSON": validPayloadJson()
         ], qrVerifier: makeStubQrVerifier())
@@ -213,6 +217,10 @@ final class CaptureViewModelTests: XCTestCase {
     }
 
     func testInitImportsQrPayloadFromEnvironmentPath() async throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Environment bootstrap is intentionally simulator-only.")
+        #endif
+
         let payloadPath = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("json")
