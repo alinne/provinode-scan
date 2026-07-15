@@ -10,11 +10,28 @@ permissions:
 
 jobs:
   ios-build-test:
-    runs-on: macos-14
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: workbench/apps/provinode-scan
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out Provinode Scan
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: workbench/apps/provinode-scan
+      - name: Check out Linnaeus engine client SDK
+        uses: actions/checkout@v4
+        with:
+          repository: alinne/linnaeus-engine
+          ssh-key: ${{ secrets.LINNAEUS_ENGINE_DEPLOY_KEY }}
+          path: workbench/linnaeus/linnaeus-engine
+      - name: Check out Provinode Room contracts
+        uses: actions/checkout@v4
+        with:
+          repository: alinne/provinode-room-contracts
+          ssh-key: ${{ secrets.PROVINODE_ROOM_CONTRACTS_DEPLOY_KEY }}
+          path: workbench/apps/provinode-room-contracts
       - name: Verify internal API architecture
         shell: pwsh
         run: |

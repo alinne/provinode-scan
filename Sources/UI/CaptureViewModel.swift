@@ -27,6 +27,8 @@ final class CaptureViewModel: ObservableObject {
     @Published var captureCoaching: String = "Pair with a desktop to begin."
     @Published var safeToStop = false
     @Published var metrics = ScanSessionMetrics()
+    @Published var previewImage: UIImage?
+    @Published var coverage = CaptureCoverageSnapshot()
     @Published var lastSessionDirectory: URL?
     @Published var lastExportPath: URL?
     @Published var activeSessionId: String = ""
@@ -36,6 +38,8 @@ final class CaptureViewModel: ObservableObject {
     @Published var selectedTrustDeviceId: String = ""
     @Published var sessionLibraryFilter: String = ""
     @Published var trustFilter: String = ""
+    @Published var desktopSyncStatusBySessionId: [String: String] = [:]
+    @Published var syncingSessionId: String?
 
     var filteredRecordedSessions: [RecordedSessionSummary] {
         let filter = sessionLibraryFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -79,6 +83,7 @@ final class CaptureViewModel: ObservableObject {
     private let qrVerifier: any PairingQrVerifying
     private let scanIdentity: ScanIdentityMaterial
     private let transport = QuicTransportClient()
+    private let finalizedCaptureSyncClient = FinalizedCaptureSyncClient()
     private let simulatorAutoPairEnabled: Bool
     private let simulatorAutoCaptureDurationSeconds: Double?
     private let simulatorAutoExportEnabled: Bool
@@ -141,6 +146,7 @@ final class CaptureViewModel: ObservableObject {
         simulatorDisableEngineSecureChannel = false
         #endif
 
+        selectedEndpoint = scanIdentityStore.lastPairingEndpoint()
         applySimulatorBootstrapIfPresent(environment: environment)
         triggerSimulatorAutomationIfNeeded()
         Task { [weak self] in
@@ -154,8 +160,11 @@ final class CaptureViewModel: ObservableObject {
         discovery.start()
         while !Task.isCancelled {
             discoveredEndpoints = discovery.endpoints
-            if selectedEndpoint == nil {
-                selectedEndpoint = discoveredEndpoints.first
+            if selectedEndpoint == nil, let discovered = discoveredEndpoints.first {
+                selectedEndpoint = discovered
+                if await trustedPeer(for: discovered) != nil {
+                    try? scanIdentityStore.persistLastPairingEndpoint(discovered)
+                }
             }
 
             triggerSimulatorAutomationIfNeeded()
@@ -198,7 +207,8 @@ final class CaptureViewModel: ObservableObject {
                 try scanIdentityStore.persistClientTlsIdentity(
                     pkcs12Data: pkcs12Data,
                     password: scanClientMtls.password,
-                    certFingerprintSha256: scanClientMtls.cert_fingerprint_sha256)
+                    certFingerprintSha256: scanClientMtls.cert_fingerprint_sha256,
+                    pairingEndpoint: endpoint)
             } else if result.scan_client_mtls != nil {
                 throw PairingError.serverRejected(nil)
             }
@@ -407,9 +417,11 @@ final class CaptureViewModel: ObservableObject {
                 while let self, self.isCapturing {
                     if let pipeline = self.pipeline {
                         self.metrics = pipeline.metrics
+                        self.previewImage = pipeline.previewImage
+                        self.coverage = pipeline.coverage
                         self.refreshCaptureHealth()
                     }
-                    try? await Task.sleep(for: .seconds(1))
+                    try? await Task.sleep(for: .milliseconds(250))
                 }
             }
         } catch {
@@ -430,9 +442,11 @@ final class CaptureViewModel: ObservableObject {
     func stopCapture() async {
         guard isCapturing, let pipeline else { return }
 
+        var savedSessionId: String?
         do {
             let directory = try await pipeline.stop()
             lastSessionDirectory = directory
+            savedSessionId = directory.lastPathComponent
             status = "Capture saved: \(directory.lastPathComponent)"
         } catch {
             status = "Capture finalize failed: \(error.localizedDescription)"
@@ -452,6 +466,59 @@ final class CaptureViewModel: ObservableObject {
         await refreshSessionLibrary()
         refreshCaptureHealth()
         updateCaptureDerivedState()
+        if let savedSessionId {
+            Task { [weak self] in
+                await self?.syncSessionToDesktop(sessionId: savedSessionId)
+            }
+        }
+    }
+
+    func syncSessionToDesktop(sessionId: String) async {
+        guard syncingSessionId == nil else {
+            status = "Another capture is already syncing to the desktop"
+            return
+        }
+        guard let session = recordedSessions.first(where: { $0.sessionId == sessionId }) else {
+            status = "Capture not found for desktop sync"
+            return
+        }
+        guard let endpoint = resolvedPairingEndpoint(),
+              let trustedPeer = await trustedPeer(for: endpoint)
+        else {
+            desktopSyncStatusBySessionId[sessionId] = "Saved on phone — pair a desktop to sync"
+            return
+        }
+        guard let clientIdentity = scanIdentityStore.clientTlsIdentity() else {
+            desktopSyncStatusBySessionId[sessionId] = "Re-pair the desktop to enable secure sync"
+            return
+        }
+        try? scanIdentityStore.persistLastPairingEndpoint(endpoint)
+
+        syncingSessionId = sessionId
+        desktopSyncStatusBySessionId[sessionId] = "Preparing capture…"
+        status = "Preparing capture for desktop sync"
+        defer { syncingSessionId = nil }
+
+        do {
+            let result = try await finalizedCaptureSyncClient.sync(
+                session: session,
+                sourceDeviceId: scanIdentity.deviceId,
+                endpoint: endpoint,
+                pinnedFingerprintSha256: trustedPeer.peer_cert_fingerprint_sha256,
+                clientIdentity: clientIdentity) { [weak self] progress in
+                    await MainActor.run {
+                        self?.desktopSyncStatusBySessionId[sessionId] = "Uploading \(progress.uploadedFiles) of \(progress.totalFiles) files…"
+                    }
+                }
+            let completed = result.reconstruction_status == "complete"
+                ? "Stored and reconstructed on desktop"
+                : "Stored on desktop"
+            desktopSyncStatusBySessionId[sessionId] = completed
+            status = completed
+        } catch {
+            desktopSyncStatusBySessionId[sessionId] = "Sync failed — capture remains saved on phone"
+            status = "Desktop sync failed: \(error.localizedDescription)"
+        }
     }
 
     func exportLastSession() {

@@ -20,7 +20,8 @@ final class EngineRoomAuthorityClientTests: XCTestCase {
 
         let result = try await client.startPairing(endpoint: Self.endpoint())
 
-        let request = try XCTUnwrap(await transport.capturedRequest())
+        let capturedRequest = await transport.capturedRequest()
+        let request = try XCTUnwrap(capturedRequest)
         let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.value(forHTTPHeaderField: "traceparent"), Self.traceparent)
@@ -46,7 +47,8 @@ final class EngineRoomAuthorityClientTests: XCTestCase {
 
         let result = try await client.getActivePairing(endpoint: Self.endpoint())
 
-        let request = try XCTUnwrap(await transport.capturedRequest())
+        let capturedRequest = await transport.capturedRequest()
+        let request = try XCTUnwrap(capturedRequest)
         let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(components.path, "/engine/v1/production-space/rooms/default-room/authority/pairing/active")
@@ -84,7 +86,8 @@ final class EngineRoomAuthorityClientTests: XCTestCase {
                     desktop_cert_fingerprint_sha256: String(repeating: "c", count: 64),
                     confirmed_at_utc: "2099-02-28T12:00:00Z")))
 
-        let request = try XCTUnwrap(await transport.capturedRequest())
+        let capturedRequest = await transport.capturedRequest()
+        let request = try XCTUnwrap(capturedRequest)
         let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
@@ -117,7 +120,8 @@ final class EngineRoomAuthorityClientTests: XCTestCase {
             contentType: "application/octet-stream",
             payload: Data("roomcapture".utf8))
 
-        let request = try XCTUnwrap(await transport.capturedRequest())
+        let capturedRequest = await transport.capturedRequest()
+        let request = try XCTUnwrap(capturedRequest)
         let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
@@ -146,8 +150,10 @@ final class PairingServiceTests: XCTestCase {
 
         XCTAssertEqual(started.session?.desktopDeviceId, "desktop-1")
         XCTAssertEqual(cached.session?.desktopDeviceId, "desktop-1")
-        XCTAssertEqual(await authorityClient.startCallCount(), 1)
-        XCTAssertEqual(await authorityClient.activeCallCount(), 0)
+        let startCallCount = await authorityClient.startCallCount()
+        let activeCallCount = await authorityClient.activeCallCount()
+        XCTAssertEqual(startCallCount, 1)
+        XCTAssertEqual(activeCallCount, 0)
     }
 
     func testGetActivePairingSessionReusesShortLivedCache() async throws {
@@ -165,7 +171,8 @@ final class PairingServiceTests: XCTestCase {
         _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
         _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
 
-        XCTAssertEqual(await authorityClient.activeCallCount(), 1)
+        let activeCallCount = await authorityClient.activeCallCount()
+        XCTAssertEqual(activeCallCount, 1)
     }
 
     func testConfirmPairingDelegatesToAuthorityClientAndPersistsTrustRecord() async throws {
@@ -191,9 +198,11 @@ final class PairingServiceTests: XCTestCase {
             desktopCertFingerprintSha256: String(repeating: "c", count: 64))
 
         XCTAssertEqual(result.trust_record.peer_device_id, "desktop-1")
-        XCTAssertEqual(await authorityClient.confirmCallCount(), 1)
+        let confirmCallCount = await authorityClient.confirmCallCount()
+        XCTAssertEqual(confirmCallCount, 1)
 
-        let requestBody = try XCTUnwrap(await authorityClient.lastConfirmRequestBody())
+        let lastConfirmRequestBody = await authorityClient.lastConfirmRequestBody()
+        let requestBody = try XCTUnwrap(lastConfirmRequestBody)
         XCTAssertEqual(requestBody.pairing_code, "482915")
         XCTAssertEqual(requestBody.pairing_confirm.scan_device_id, "scan-1")
         XCTAssertEqual(requestBody.pairing_confirm.pairing_nonce, "01JNONCEABCDEFGHJKMNPQRSTV")
@@ -227,8 +236,10 @@ final class PairingServiceTests: XCTestCase {
             desktopCertFingerprintSha256: String(repeating: "c", count: 64))
         _ = try await service.getActivePairingSession(endpoint: Self.endpoint())
 
-        XCTAssertEqual(await authorityClient.activeCallCount(), 2)
-        XCTAssertEqual(await authorityClient.confirmCallCount(), 1)
+        let activeCallCount = await authorityClient.activeCallCount()
+        let confirmCallCount = await authorityClient.confirmCallCount()
+        XCTAssertEqual(activeCallCount, 2)
+        XCTAssertEqual(confirmCallCount, 1)
     }
 
     func testConfirmPairingSurfacesAuthorityUnavailableFromAuthorityClient() async throws {

@@ -21,6 +21,7 @@
       "items": { "type": "string" },
       "default": [
         "consume shared pairing, capture, session, trust, and LAN payload contracts from apps/provinode-room-contracts",
+        "consume finalized-capture upload payloads and schema versions from apps/provinode-room-contracts while using the Room operator OpenAPI document as the HTTP route authority",
         "consume extracted secure-channel and QUIC session-core semantics from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
         "consume extracted pairing semantics, discovery parsing/ranking, endpoint normalization, and QR/session-preparation helpers from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
         "consume extracted reconnect policy, backpressure/control-payload interpretation, resume-checkpoint generation, and client session-state policy from shared Linnaeus Apple/mobile client capability packages instead of app-local implementations",
