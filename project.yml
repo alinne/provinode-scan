@@ -1,6 +1,8 @@
 name: ProvinodeScan
 options:
   minimumXcodeGenVersion: 2.38.0
+  xcodeVersion: "15.4"
+  projectFormat: xcode15_3
 settings:
   base:
     PRODUCT_BUNDLE_IDENTIFIER: com.provinode.scan
