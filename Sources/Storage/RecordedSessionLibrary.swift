@@ -2,7 +2,7 @@ import Foundation
 import ProvinodeRoomContracts
 import UIKit
 
-struct RecordedSessionSummary: Identifiable, Equatable {
+struct RecordedSessionSummary: Identifiable, Equatable, Sendable {
     let id: String
     let sessionId: String
     let sourceDeviceId: String
@@ -36,6 +36,11 @@ struct RecordedSessionSummary: Identifiable, Equatable {
 }
 
 enum RecordedSessionLibrary {
+    struct SyncFile: Sendable {
+        let descriptor: FinalizedCaptureUploadFile
+        let url: URL
+    }
+
     static func sessionsDirectory(rootDirectory: URL? = nil) throws -> URL {
         if let rootDirectory {
             try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
@@ -89,6 +94,37 @@ enum RecordedSessionLibrary {
             return UIImage(data: imageData)
         }
         return nil
+    }
+
+    static func syncFiles(for session: RecordedSessionSummary) throws -> [SyncFile] {
+        let root = session.sessionDirectory.resolvingSymlinksInPath().standardizedFileURL
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants])
+        else {
+            throw NSError(domain: "RecordedSessionLibrary", code: 5101, userInfo: [NSLocalizedDescriptionKey: "Could not enumerate the capture package."])
+        }
+
+        let urls = enumerator.compactMap { $0 as? URL }.filter { url in
+            (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }.sorted { $0.path < $1.path }
+
+        return try urls.enumerated().map { index, url in
+            let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+            guard resolved.path.hasPrefix(root.path + "/") else {
+                throw NSError(domain: "RecordedSessionLibrary", code: 5102, userInfo: [NSLocalizedDescriptionKey: "A capture file escaped the session directory."])
+            }
+            let relativePath = String(resolved.path.dropFirst(root.path.count + 1))
+            let values = try resolved.resourceValues(forKeys: [.fileSizeKey])
+            return SyncFile(
+                descriptor: FinalizedCaptureUploadFile(
+                    file_id: String(format: "%08d", index),
+                    relative_path: relativePath,
+                    byte_size: Int64(values.fileSize ?? 0),
+                    sha256: try Sha256.hex(ofFile: resolved)),
+                url: resolved)
+        }
     }
 
     private static func readSummary(at sessionDirectory: URL) -> RecordedSessionSummary? {

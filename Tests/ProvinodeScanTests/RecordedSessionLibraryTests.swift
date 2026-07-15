@@ -57,5 +57,16 @@ final class RecordedSessionLibraryTests: XCTestCase {
         XCTAssertEqual(session.roomLengthMeters, 3.25, accuracy: 0.001)
         XCTAssertEqual(session.roomHeightMeters, 2.7, accuracy: 0.001)
         XCTAssertEqual(session.roomSizeSummary, "4.5 × 3.2 × 2.7 m")
+
+        let syncFiles = try RecordedSessionLibrary.syncFiles(for: session)
+        let filesByPath = Dictionary(uniqueKeysWithValues: syncFiles.map { ($0.descriptor.relative_path, $0) })
+        XCTAssertNotNil(filesByPath["session.manifest.json"])
+        XCTAssertNotNil(filesByPath["samples.log"])
+        XCTAssertNotNil(filesByPath["integrity.json"])
+        for file in syncFiles {
+            XCTAssertEqual(file.descriptor.byte_size, Int64(try Data(contentsOf: file.url).count))
+            XCTAssertEqual(file.descriptor.sha256, try Sha256.hex(ofFile: file.url))
+            XCTAssertEqual(file.descriptor.sha256.count, 64)
+        }
     }
 }

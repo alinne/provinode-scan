@@ -28,11 +28,22 @@ final class ScanIdentityStoreTests: XCTestCase {
 
         let store1 = try ScanIdentityStore(rootDirectory: root)
         XCTAssertNil(store1.clientTlsIdentity())
+        XCTAssertNil(store1.lastPairingEndpoint())
+
+        let endpoint = PairingEndpoint(
+            host: "room.test",
+            port: 7448,
+            quicPort: 7447,
+            pairingScheme: "https",
+            pairingCertFingerprintSha256: String(repeating: "b", count: 64),
+            displayName: "Room",
+            desktopDeviceId: "desktop-test")
 
         try store1.persistClientTlsIdentity(
             pkcs12Data: Data([0x01, 0x02, 0x03]),
             password: "secret",
-            certFingerprintSha256: String(repeating: "a", count: 64))
+            certFingerprintSha256: String(repeating: "a", count: 64),
+            pairingEndpoint: endpoint)
 
         let store2 = try ScanIdentityStore(rootDirectory: root)
         let mtls = store2.clientTlsIdentity()
@@ -40,6 +51,20 @@ final class ScanIdentityStoreTests: XCTestCase {
         XCTAssertEqual(mtls?.pkcs12Data, Data([0x01, 0x02, 0x03]))
         XCTAssertEqual(mtls?.password, "secret")
         XCTAssertEqual(mtls?.certFingerprintSha256, String(repeating: "a", count: 64))
+        XCTAssertEqual(store2.lastPairingEndpoint(), endpoint)
+
+        let refreshedEndpoint = PairingEndpoint(
+            host: "room-refreshed.test",
+            port: 8448,
+            quicPort: 8447,
+            pairingScheme: "https",
+            pairingCertFingerprintSha256: endpoint.pairingCertFingerprintSha256,
+            displayName: endpoint.displayName,
+            desktopDeviceId: endpoint.desktopDeviceId)
+        try store2.persistLastPairingEndpoint(refreshedEndpoint)
+        let store3 = try ScanIdentityStore(rootDirectory: root)
+        XCTAssertEqual(store3.lastPairingEndpoint(), refreshedEndpoint)
+        XCTAssertEqual(store3.clientTlsIdentity()?.pkcs12Data, Data([0x01, 0x02, 0x03]))
 
         let rawFile = try String(contentsOf: root.appendingPathComponent("scan-identity.json"), encoding: .utf8)
         XCTAssertFalse(rawFile.contains("secret"))

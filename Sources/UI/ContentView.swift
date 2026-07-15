@@ -307,8 +307,17 @@ private struct SessionReviewScreen: View {
                     }
                     Text("This is a capture review, not a reconstructed room model. Reconstruction and the authoritative room library run on the desktop engine host.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    if let syncStatus = vm.desktopSyncStatusBySessionId[session.sessionId] {
+                        Label(syncStatus, systemImage: syncStatus.contains("reconstructed") ? "checkmark.icloud.fill" : "icloud.and.arrow.up")
+                            .font(.footnote)
+                    }
+                    Button(vm.syncingSessionId == session.sessionId ? "Syncing…" : "Sync and reconstruct on desktop") {
+                        Task { await vm.syncSessionToDesktop(sessionId: session.sessionId) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.syncingSessionId != nil)
                     Button("Export capture package") { vm.exportSession(sessionId: session.sessionId) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                 }
                 .padding()
             }

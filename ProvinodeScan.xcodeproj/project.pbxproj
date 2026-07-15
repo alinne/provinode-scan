@@ -35,6 +35,7 @@
 		D00F1900539F37B37DD704CE /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94414950604717D1A400ED1 /* PairingService.swift */; };
 		D76102C8FE29B3D058D2E4AA /* CaptureViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA2AA10350BBDA88C3A89BC /* CaptureViewModelTests.swift */; };
 		DC7549EA75A638AB38626919 /* ProvinodeRoomContracts in Frameworks */ = {isa = PBXBuildFile; productRef = 5D75BB7884E4AD0B73AD805D /* ProvinodeRoomContracts */; };
+		E5E21CCA231E5BDE58B70542 /* FinalizedCaptureSyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740A316842B3D20BD4A74B7B /* FinalizedCaptureSyncClient.swift */; };
 		E97636D2656125F319B27801 /* PairingQrVerificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */; };
 		EC531901E043B4AA6447BBD1 /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9821CE14F4D0D098B11A1BFC /* QrScannerView.swift */; };
 		F14F07128D4F82DDF8BDE3D2 /* LinnaeusEngineClientSdkApple in Frameworks */ = {isa = PBXBuildFile; productRef = 86C1A561E1363E73A14E049D /* LinnaeusEngineClientSdkApple */; };
@@ -56,7 +57,7 @@
 /* Begin PBXFileReference section */
 		0320B5EF1DE0F412A6F15407 /* PairingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingServiceTests.swift; sourceTree = "<group>"; };
 		0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationService.swift; sourceTree = "<group>"; };
-		0F1B2098575AB940EB975DC2 /* ProvinodeScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ProvinodeScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0F1B2098575AB940EB975DC2 /* ProvinodeScan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProvinodeScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		15D254857DDE20D05A99E27D /* SessionRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorder.swift; sourceTree = "<group>"; };
 		1B91C4745E8E1891EB036960 /* ULID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ULID.swift; sourceTree = "<group>"; };
 		1E9E864DD7BB44FE6D708D13 /* EngineSecureChannelCryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSecureChannelCryptoTests.swift; sourceTree = "<group>"; };
@@ -69,6 +70,7 @@
 		6E28A27C0A0003BCC8E2D4A5 /* ProvinodeScanTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ProvinodeScanTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB8BA2EA9E4B516A37841A2 /* Sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sha256.swift; sourceTree = "<group>"; };
 		703680052CF0712179BDB312 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		740A316842B3D20BD4A74B7B /* FinalizedCaptureSyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalizedCaptureSyncClient.swift; sourceTree = "<group>"; };
 		7E4C84E229EFE8890C577657 /* RecordedSessionLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordedSessionLibrary.swift; sourceTree = "<group>"; };
 		7E79F9E73FE655D217B6A272 /* PairingQrVerificationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQrVerificationServiceTests.swift; sourceTree = "<group>"; };
 		81FA0B8C54D47C7DD5190670 /* ScanSessionMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionMetrics.swift; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
 			children = (
 				4C57CE1167814CBF345D2BE7 /* EngineRoomAuthorityClient.swift */,
 				8225533EDB806AC92244C52F /* EngineSecureChannelCrypto.swift */,
+				740A316842B3D20BD4A74B7B /* FinalizedCaptureSyncClient.swift */,
 				DB3C9CB86C637BEF6AF711CC /* LanDiscoveryService.swift */,
 				0A101CC7F834A93E73305FFE /* PairingQrVerificationService.swift */,
 				C94414950604717D1A400ED1 /* PairingService.swift */,
@@ -301,8 +304,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = D2046BAB0359B19608C86E71 /* Build configuration list for PBXProject "ProvinodeScan" */;
 			developmentRegion = en;
@@ -340,6 +341,7 @@
 				FB06887861C27622D65971FC /* DeviceCapabilityPolicy.swift in Sources */,
 				8269ED38077ACCE117D1656A /* EngineRoomAuthorityClient.swift in Sources */,
 				95AE6EF8A055A01B6E671FDE /* EngineSecureChannelCrypto.swift in Sources */,
+				E5E21CCA231E5BDE58B70542 /* FinalizedCaptureSyncClient.swift in Sources */,
 				542F1DB76F80CFBAC44D4EC8 /* LanDiscoveryService.swift in Sources */,
 				E97636D2656125F319B27801 /* PairingQrVerificationService.swift in Sources */,
 				D00F1900539F37B37DD704CE /* PairingService.swift in Sources */,
@@ -390,6 +392,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JKKQF6V9CJ;
 				INFOPLIST_FILE = Config/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -561,6 +564,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JKKQF6V9CJ;
 				INFOPLIST_FILE = Config/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

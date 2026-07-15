@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import LinnaeusEngineClientSdkApple
 
 struct ScanIdentityMaterial: Sendable {
     let deviceId: String
@@ -22,6 +23,7 @@ final class ScanIdentityStore {
         let pkcs12_b64: String
         let password: String
         let cert_fingerprint_sha256: String
+        let pairing_endpoint: PairingEndpoint?
     }
 
     private struct StoredIdentity: Codable {
@@ -55,14 +57,8 @@ final class ScanIdentityStore {
     }
 
     func clientTlsIdentity() -> ScanClientTlsIdentityMaterial? {
-        if let encryptedBlobB64 = storedIdentity.client_tls_encrypted_blob_b64 {
-            let version = storedIdentity.client_tls_encryption_version ?? Self.clientTlsEncryptionVersion
-            guard version == Self.clientTlsEncryptionVersion,
-                  let encryptedBlob = Data(base64Encoded: encryptedBlobB64),
-                  let encryptionKey = Self.clientTlsEncryptionKey(from: storedIdentity),
-                  let sealedBox = try? AES.GCM.SealedBox(combined: encryptedBlob),
-                  let decryptedPayload = try? AES.GCM.open(sealedBox, using: encryptionKey),
-                  let secret = try? JSONDecoder().decode(StoredClientTlsSecret.self, from: decryptedPayload),
+        if storedIdentity.client_tls_encrypted_blob_b64 != nil {
+            guard let secret = decryptedClientTlsSecret(),
                   let pkcs12Data = Data(base64Encoded: secret.pkcs12_b64)
             else {
                 return nil
@@ -88,15 +84,42 @@ final class ScanIdentityStore {
             certFingerprintSha256: certFingerprint)
     }
 
+    func lastPairingEndpoint() -> PairingEndpoint? {
+        decryptedClientTlsSecret()?.pairing_endpoint
+    }
+
+    func persistLastPairingEndpoint(_ endpoint: PairingEndpoint) throws {
+        guard let current = decryptedClientTlsSecret() else {
+            return
+        }
+        let updated = StoredClientTlsSecret(
+            pkcs12_b64: current.pkcs12_b64,
+            password: current.password,
+            cert_fingerprint_sha256: current.cert_fingerprint_sha256,
+            pairing_endpoint: endpoint)
+        let encryptedBlobB64 = try Self.encryptClientTlsSecret(updated, with: storedIdentity)
+        storedIdentity = StoredIdentity(
+            device_id: storedIdentity.device_id,
+            signing_private_key_raw_b64: storedIdentity.signing_private_key_raw_b64,
+            client_tls_encrypted_blob_b64: encryptedBlobB64,
+            client_tls_encryption_version: Self.clientTlsEncryptionVersion,
+            client_tls_pkcs12_b64: nil,
+            client_tls_password: nil,
+            client_tls_cert_fingerprint_sha256: nil)
+        try persist()
+    }
+
     func persistClientTlsIdentity(
         pkcs12Data: Data,
         password: String,
-        certFingerprintSha256: String
+        certFingerprintSha256: String,
+        pairingEndpoint: PairingEndpoint? = nil
     ) throws {
         let secret = StoredClientTlsSecret(
             pkcs12_b64: pkcs12Data.base64EncodedString(),
             password: password,
-            cert_fingerprint_sha256: certFingerprintSha256.lowercased())
+            cert_fingerprint_sha256: certFingerprintSha256.lowercased(),
+            pairing_endpoint: pairingEndpoint)
         let encryptedBlobB64 = try Self.encryptClientTlsSecret(secret, with: storedIdentity)
 
         storedIdentity = StoredIdentity(
@@ -108,6 +131,23 @@ final class ScanIdentityStore {
             client_tls_password: nil,
             client_tls_cert_fingerprint_sha256: nil)
         try persist()
+    }
+
+    private func decryptedClientTlsSecret() -> StoredClientTlsSecret? {
+        guard let encryptedBlobB64 = storedIdentity.client_tls_encrypted_blob_b64 else {
+            return nil
+        }
+        let version = storedIdentity.client_tls_encryption_version ?? Self.clientTlsEncryptionVersion
+        guard version == Self.clientTlsEncryptionVersion,
+              let encryptedBlob = Data(base64Encoded: encryptedBlobB64),
+              let encryptionKey = Self.clientTlsEncryptionKey(from: storedIdentity),
+              let sealedBox = try? AES.GCM.SealedBox(combined: encryptedBlob),
+              let decryptedPayload = try? AES.GCM.open(sealedBox, using: encryptionKey)
+        else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(StoredClientTlsSecret.self, from: decryptedPayload)
     }
 
     private static func loadOrCreate(fileUrl: URL) throws -> StoredIdentity {
@@ -175,7 +215,8 @@ final class ScanIdentityStore {
         let secret = StoredClientTlsSecret(
             pkcs12_b64: pkcs12,
             password: password,
-            cert_fingerprint_sha256: fingerprint.lowercased())
+            cert_fingerprint_sha256: fingerprint.lowercased(),
+            pairing_endpoint: nil)
         let encryptedBlobB64 = try encryptClientTlsSecret(secret, with: stored)
 
         let migrated = StoredIdentity(
