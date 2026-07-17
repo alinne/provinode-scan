@@ -19,3 +19,12 @@
 - Documentation/code: follow `docs/contracts/agent-oriented-documentation-and-commenting-contract-v1.md`; explain invariants, never target comment density, and decompose oversized sources or record a reviewed disposition.
 - Tasks/freshness: use `scripts/run.ps1` with `doctor|build|test|verify|docs`; keep `manifests/agent-documents.json` current.
 - Success is correct routing, authority, code/test discovery, and verification—not prose volume.
+
+## Clock-Centered Architecture Inheritance
+
+- Inherit the workspace authority in `docs/architecture/clock-centered-engine-architecture-v1.md`; local instructions must not create a competing clock, resource, execution, artifact, or trust authority.
+- The clock is Layer 0. LAN paths that require precision use genuine IEEE 1588/PTP with hardware timestamping; WAN paths federate site clock domains through authenticated transforms with explicit uncertainty, freshness, and holdover. Never label a monotonic or system-clock fallback as PTP.
+- Resource declarations and scheduling evidence cover CPU/GPU/NPU, or mark a resource class explicitly `N/A`.
+- Cross-boundary work follows the canonical operation/evidence/replay spine so intent, plans, work attempts, artifacts, evidence, and replay remain correlated.
+- C++ is the default for reusable performance-sensitive hot paths, device/runtime integration, codecs, media, transport, geometry, native memory and synchronization, and CPU/GPU/NPU execution. Use C# only when managed contracts, orchestration, policy, services, SDK/CLI, or tooling materially make more sense, behind a stable ABI with thin wrappers. Do not perform blanket rewrites; migrations require measurements.
+- This repository owns only Provinode Scan iOS UX, LiDAR capture, and secure-LAN adapter projections; shared spatial, clock, transport, trust, artifact, and reconstruction authority remains in the engine or versioned shared contracts.
